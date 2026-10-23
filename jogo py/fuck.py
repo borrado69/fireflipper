@@ -5250,62 +5250,61 @@ class Game:
             self.text(msg.rstrip(".") + (dots if msg.endswith("...") else ""), 36, (230, 230, 245), (W // 2, top + 82))
 
     # ---------------------------------------------------------- MENU / TÍTULO
-    def build_title_art(self):
-        rng = random.Random(7)
-        # céu
+    def title_backdrop(self, rng):
+        """Fundo no estilo da abertura de Hora de Aventura: janela de céu azul cercada de nuvens roxas com borda
+        iluminada em laranja-rosado, montanhas lavanda e rocha no chão. Devolve (céu opaco, paisagem transparente)."""
         sky = pygame.Surface((W, H))
         for y in range(H):
-            sky.fill(mix((8, 10, 30), (y / H) ** 1.5, (104, 54, 98)), (0, y, W, 1))
-        gl = make_glow(380, (86, 40, 44))
-        sky.blit(gl, (W // 2 - 380, 470 - 380), special_flags=pygame.BLEND_RGB_ADD)
-        mg = make_glow(150, (60, 54, 40))
-        sky.blit(mg, (W - 170 - 150, 110 - 150), special_flags=pygame.BLEND_RGB_ADD)
-        pygame.draw.circle(sky, (252, 240, 208), (W - 170, 110), 44)
-        for cx, cy, cr in ((-14, -8, 9), (10, 12, 7), (-6, 18, 5), (16, -14, 4)):
-            pygame.draw.circle(sky, (226, 212, 180), (W - 170 + cx, 110 + cy), cr)
-        tg = make_glow(330, (52, 28, 70))
-        sky.blit(tg, (W // 2 - 330, 80 - 330), special_flags=pygame.BLEND_RGB_ADD)
-        self.title_sky = sky
-        self.title_stars = [(rng.randint(0, W), rng.randint(0, 330), rng.choice([1, 1, 2, 2, 3]), rng.uniform(0, 6.28)) for _ in range(90)]
-
-        # paisagem (transparente)
+            sky.fill(mix((100, 138, 204), min(1.0, y / H * 1.2) ** 1.3, (184, 194, 228)), (0, y, W, 1))
+        sky.blit(make_glow(330, (34, 32, 22)), (W // 2 - 330, 100 - 330), special_flags=pygame.BLEND_RGB_ADD)
         land = pygame.Surface((W, H), pygame.SRCALPHA)
+        body, dark, rim = (92, 90, 142), (62, 68, 122), (218, 164, 130)
 
-        def ridge(base, colour, amp, ph):
+        def cloud(circles, toward):
+            for cx, cy, r in circles:           # borda iluminada, voltada para o céu aberto
+                dx, dy = toward[0] - cx, toward[1] - cy
+                d = max(1.0, math.hypot(dx, dy))
+                pygame.draw.circle(land, rim, (int(cx + dx / d * 5), int(cy + dy / d * 5)), r + 3)
+            for cx, cy, r in circles:           # sombra embaixo
+                pygame.draw.circle(land, dark, (cx, cy), r)
+            for cx, cy, r in circles:           # corpo da nuvem
+                pygame.draw.circle(land, body, (cx - 3, cy - 8), r - 2)
+
+        top = []
+        for cx in range(-40, W + 60, 80):
+            d = abs(cx - W / 2) / (W / 2)
+            top.append((cx, int(2 + 14 * d + rng.randint(-8, 8)), int(44 + 52 * d + rng.randint(-6, 8))))
+        cloud(top, (W // 2, 140))
+        left = [(rng.randint(-50, 90), 70 + i * 46 + rng.randint(-12, 12), rng.randint(58, 92)) for i in range(8)]
+        right = [(W - rng.randint(-50, 90), 50 + i * 46 + rng.randint(-12, 12), rng.randint(62, 100)) for i in range(8)]
+        cloud(left, (W // 2, 200))
+        cloud(right, (W // 2, 200))
+
+        def ridge(base, colour, amp, ph, step=36):
             pts = [(0, H)]
-            for x in range(0, W + 20, 20):
-                y = base - (amp * 0.55 * math.sin(x * 0.011 + ph) + amp * 0.3 * math.sin(x * 0.027 + ph * 2) + amp * 0.15 * math.sin(x * 0.05 + ph * 3))
-                pts.append((x, y))
+            for x in range(0, W + step, step):
+                k = (1 - abs(math.sin(x * 0.013 + ph))) * 0.65 + (1 - abs(math.sin(x * 0.031 + ph * 2.1))) * 0.35
+                pts.append((x, base - amp * k))
             pts.append((W, H))
             pygame.draw.polygon(land, colour, pts)
 
-        ridge(H - 215, (42, 30, 70), 110, 1.0)
-        ridge(H - 150, (30, 26, 56), 90, 2.3)
+        ridge(H - 170, (176, 176, 208), 120, 0.7)
+        ridge(H - 120, (140, 134, 184), 100, 2.2)
+        ridge(H - 70, (102, 96, 142), 70, 4.0)
+        rock, x = [(0, H), (0, H - 46)], 0
+        while x < W:
+            x += rng.randint(30, 70)
+            rock.append((x, H - 46 - rng.randint(0, 26)))
+        rock.append((W, H))
+        pygame.draw.polygon(land, (102, 94, 76), rock)
+        pygame.draw.lines(land, (142, 140, 112), False, rock[1:-1], 3)
+        return sky, land
+
+    def build_title_art(self):
+        rng = random.Random(7)
+        self.title_sky, self.title_land = self.title_backdrop(rng)
+        self.title_stars = []
         self.title_windows = []
-
-        def tower(x, w, h, base, col):
-            top = base - h
-            pygame.draw.rect(land, col, (x, top, w, h + 40))
-            pygame.draw.rect(land, shade(col, 1.25), (x + w - 8, top, 8, h + 40))
-            for i in range(0, w, 14):
-                pygame.draw.rect(land, col, (x + i, top - 10, 9, 10))
-            pygame.draw.polygon(land, (66, 34, 76), [(x - 6, top - 10), (x + w + 6, top - 10), (x + w // 2, top - 62)])
-            pygame.draw.line(land, (200, 190, 220), (x + w // 2, top - 62), (x + w // 2, top - 82), 2)
-            pygame.draw.polygon(land, (200, 50, 70), [(x + w // 2, top - 82), (x + w // 2 + 16, top - 76), (x + w // 2, top - 70)])
-            for wy in range(top + 24, base - 10, 44):
-                self.title_windows.append((x + w // 2 - 4, wy))
-
-        tower(40, 70, 200, H - 120, (36, 32, 62))
-        tower(124, 46, 130, H - 112, (32, 28, 56))
-        tower(W - 120, 76, 250, H - 112, (36, 32, 62))
-        tower(W - 186, 44, 140, H - 108, (32, 28, 56))
-        ridge(H - 80, (16, 22, 34), 60, 4.1)
-        for x in range(-10, W + 20, 30):
-            h = rng.randint(46, 96)
-            b = H + 6
-            for k in range(3):
-                pygame.draw.polygon(land, (9, 16, 20), [(x - 20 + k * 3, b - k * h // 3), (x + 20 - k * 3, b - k * h // 3), (x, b - h // 2 - k * h // 3)])
-        self.title_land = land
 
         # título em degradê com contorno (cache)
         def grad_text(s, size, c1, c2, outline=4, with_base=False):
@@ -5364,7 +5363,7 @@ class Game:
             """'M' grande e vermelho (como o D do logo) + resto da palavra, com um rabo em lâmina por baixo."""
             while True:
                 m_img, m_gb = red_cap(word[0], int(size * 1.34))
-                r_img, r_gb = grad_text(word[1:], size, (255, 244, 170), (240, 140, 40), with_base=True)
+                r_img, r_gb = grad_text(word[1:], size, (240, 112, 84), (174, 42, 48), with_base=True)
                 rc = r_img.get_bounding_rect()
                 r_gb -= rc.top
                 r_img = r_img.subsurface(rc).copy()
@@ -5380,7 +5379,7 @@ class Game:
             return cv, m_gb
 
         self.title_l1, self.title_l1_base = make_title1("MASMORRA", 118)
-        self.title_l2 = grad_text("DOS NÚMEROS", 62, (190, 235, 255), (110, 140, 255), 3)
+        self.title_l2 = grad_text("DOS NÚMEROS", 62, (252, 150, 112), (196, 54, 54), 3)
         self.build_title_logo()
         self.title_syms = []
         for i, sym in enumerate("+-×÷=?+×÷-+×÷=?"):
@@ -5388,8 +5387,8 @@ class Game:
         self.title_sym_img = {}
         for sym, _, _, size, _ in self.title_syms:
             if (sym, size) not in self.title_sym_img:
-                im = self.font(size).render(sym, True, (190, 180, 255)).convert_alpha()
-                im.fill((255, 255, 255, 46), special_flags=pygame.BLEND_RGBA_MULT)
+                im = self.font(size).render(sym, True, (250, 232, 200)).convert_alpha()
+                im.fill((255, 255, 255, 70), special_flags=pygame.BLEND_RGBA_MULT)
                 self.title_sym_img[(sym, size)] = im
         self.title_glows = {h["id"]: make_glow(96, tuple(int(c * 0.42) for c in h["color"])) for h in HEROES}
 
@@ -5475,112 +5474,84 @@ class Game:
         if not info:
             return
         t = self.t
+        k2 = max(0.0, math.sin(t * 2.0 + 1.0)) ** 3       # brilho na ponta da espada
+        self.draw_glint(info["tip"][0], info["tip"][1] + bob, 6 + 14 * k2, k2)
+        self.draw_glint(W - 62, 44, 13 + 5 * math.sin(t * 3.0), 1.0)    # estrelinha no canto do céu (como na abertura)
 
-        def pt(sv):
-            return info["cx"] + sv * info["cos"], info["cy"] - sv * info["sin"] + bob
-
-        u = (t * 0.55) % 1.9                       # brilho que corre pela lâmina
-        if u < 1.0:
-            sv = info["s0"] + (info["sc"] - info["s0"]) * u
-            k = math.sin(u * math.pi)
-            x, y = pt(sv)
-            self.draw_glint(x, y - 5, 5 + 9 * k, k)
-        k2 = max(0.0, math.sin(t * 2.0 + 1.0)) ** 3  # brilho na ponta
-        x, y = pt(info["st"])
-        self.draw_glint(x, y, 6 + 14 * k2, k2)
-
-    def make_sword(self, L):
-        """Espada cartoon (horizontal, ponta para a direita) com contorno grosso: lâmina azulada,
-        guarda dourada, cabo vermelho e pomo com gema. Desenhada em 2x e reduzida (suaviza as bordas)."""
-        S, pad = 2, 8
-        w, h = (L + pad * 2) * S, 100 * S
-        surf = pygame.Surface((w, h), pygame.SRCALPHA)
-        cy = h // 2
-        ink = self.INK
-
-        def X(u):
-            return int((pad + u) * S)
-
-        def poly(pts, col, lw=4):
-            pts = [(int(x), int(y)) for x, y in pts]
-            pygame.draw.polygon(surf, ink, pts)
-            n = len(pts)
-            for i in range(n):
-                pygame.draw.line(surf, ink, pts[i], pts[(i + 1) % n], lw * 2 * S)
-                pygame.draw.circle(surf, ink, pts[i], lw * S)
-            pygame.draw.polygon(surf, col, pts)
-
-        def box(u0, u1, v0, v1, col, rad, lw=4):
-            r = pygame.Rect(X(u0), cy + int(v0 * S), int((u1 - u0) * S), int((v1 - v0) * S))
-            pygame.draw.rect(surf, ink, r.inflate(lw * 2 * S, lw * 2 * S), border_radius=int((rad + lw) * S))
-            pygame.draw.rect(surf, col, r, border_radius=int(rad * S))
-            return r
-
-        hw = 13 * S
-        tip = L
-        # lâmina
-        poly([(X(84), cy - hw), (X(tip - 36), cy - hw), (X(tip), cy), (X(tip - 36), cy + hw), (X(84), cy + hw)], (214, 238, 255))
-        pygame.draw.polygon(surf, (150, 196, 238), [(X(84), cy + 2 * S), (X(tip - 3), cy + 1 * S), (X(tip - 36), cy + hw - 1), (X(84), cy + hw - 1)])
-        pygame.draw.line(surf, (255, 255, 255), (X(94), cy - 8 * S), (X(tip - 56), cy - 8 * S), 3 * S)
-        # cabo
-        box(22, 66, -8, 8, (214, 64, 72), 4)
-        for u in range(28, 62, 9):
-            pygame.draw.line(surf, (130, 28, 48), (X(u), cy - 7 * S), (X(u + 5), cy + 7 * S), 3 * S)
-        # pomo com gema
-        pygame.draw.circle(surf, ink, (X(12), cy), 16 * S)
-        pygame.draw.circle(surf, (255, 200, 60), (X(12), cy), 12 * S)
-        pygame.draw.circle(surf, (255, 236, 150), (X(9), cy - 4 * S), 4 * S)
-        pygame.draw.circle(surf, ink, (X(13), cy + 2 * S), int(6.5 * S))
-        pygame.draw.circle(surf, (90, 220, 255), (X(13), cy + 2 * S), int(4.5 * S))
-        # guarda dourada
-        box(66, 84, -34, 34, (255, 200, 60), 8)
-        pygame.draw.line(surf, (255, 240, 170), (X(70), cy - 26 * S), (X(70), cy + 26 * S), 3 * S)
-        pygame.draw.line(surf, (214, 140, 30), (X(80), cy - 26 * S), (X(80), cy + 26 * S), 3 * S)
-        pygame.draw.circle(surf, ink, (X(75), cy), int(7 * S))
-        pygame.draw.circle(surf, (236, 64, 96), (X(75), cy), int(5 * S))
-        return pygame.transform.smoothscale(surf, (w // S, h // S))
+    def make_sword(self, cols):
+        """Espada em pixel art na horizontal (ponta para a direita), com a paleta da referência: contorno quase preto,
+        lâmina ciano/branca (lado iluminado) e azul-acinzentada (lado da sombra) separadas por um fio escuro,
+        guarda laranja/dourada com contorno vinho, cabo vermelho e pomo dourado. A lâmina se estica até `cols` colunas."""
+        R, c = 17, 8
+        D, Cy, Wh, Sl, Lb = (33, 32, 44), (163, 224, 234), (255, 255, 255), (75, 81, 114), (122, 175, 199)
+        Gd, Or, Dk, Mr, Cr = (245, 176, 83), (221, 115, 49), (174, 63, 40), (76, 22, 30), (251, 239, 205)
+        Rd, Rr, Kk = (192, 25, 33), (142, 26, 45), (39, 17, 33)
+        surf = pygame.Surface((cols, R), pygame.SRCALPHA)
+        cross = [D, Cy, Cy, Wh, Wh, D, Sl, Lb, Lb, Sl, D]       # corte da lâmina (de cima para baixo)
+        for x in range(22, cols):
+            k = cols - 1 - x                                    # distância até a ponta
+            half = min(5, k // 2)
+            for dr in range(-half, half + 1):
+                idx = 5 + dr
+                col = cross[idx]
+                if abs(dr) == half:
+                    col = D
+                elif idx == 4 and (x * 5 // 7) % 6 == 0:
+                    col = Cy
+                elif idx == 3 and x % 19 < 3:
+                    col = Cy
+                elif idx == 2 and x % 23 == 0:
+                    col = Wh
+                elif idx == 7 and x % 9 < 2:
+                    col = Sl
+                surf.set_at((x, c + dr), col)
+        for x in range(8, 20):                                  # cabo com tiras diagonais
+            for y in range(5, 12):
+                surf.set_at((x, y), Kk if y in (5, 11) else (Rd if (x + y) % 4 < 2 else Rr))
+        for y in range(R):                                      # guarda
+            for x in range(20, 26):
+                if y in (0, R - 1) and x in (20, 25):
+                    continue
+                if y in (0, R - 1) or x in (20, 25):
+                    col = Mr
+                else:
+                    col = Gd if x <= 22 else (Or if x == 23 else Dk)
+                surf.set_at((x, y), col)
+        for y in (3, 4):
+            surf.set_at((21, y), Cr)
+        for x in range(0, 9):                                   # pomo redondo
+            for y in range(R):
+                dx, dy = x - 4, y - c
+                d = math.hypot(dx, dy)
+                if d <= 3.7:
+                    tt = (dx + dy) / 7.4
+                    surf.set_at((x, y), Gd if tt < -0.3 else (Dk if tt > 0.3 else Or))
+                elif d <= 4.8:
+                    surf.set_at((x, y), Mr)
+        surf.set_at((2, c - 2), Cr)
+        surf.set_at((3, c - 3), Cr)
+        return pygame.transform.scale(surf, (cols * 5, R * 5))
 
     def build_title_logo(self):
-        """Pré-monta o logo: espada inclinada atravessando o nome. A metade esquerda fica NA FRENTE das letras
-        e a direita ATRÁS (a espada 'fura' o título); o corte é feito num vão entre as letras."""
+        """Pré-monta o logo: a espada fica atrás das letras (como na abertura da série), com o cabo e a ponta saindo
+        dos dois lados do nome."""
         LH = 200
         l1, l2 = self.title_l1, self.title_l2
-        l1w, l1h = l1.get_size()
+        l1w = l1.get_width()
         lx, ly = (W - l1w) // 2, 96 - self.title_l1_base
         l2r = l2.get_rect(center=(W // 2, 130))
-        ang, yc = 6.0, 64
-        tan, cs, sn = math.tan(math.radians(ang)), math.cos(math.radians(ang)), math.sin(math.radians(ang))
-        L = int(min(W - 50, l1w + 170))
-        sw = pygame.transform.rotozoom(self.make_sword(L), ang, 1.0)
-        sr = sw.get_rect(center=(W // 2, yc))
-        mask = pygame.mask.from_surface(l1, 90)
-        best = None
-        for x in range(W // 2 - 110, W // 2 + 111):      # coluna com menos letra na faixa da lâmina
-            yb = yc - (x - W // 2) * tan
-            cov = 0
-            for yy in range(int(yb) - 18, int(yb) + 19):
-                px, py = x - lx, yy - ly
-                if 0 <= px < l1w and 0 <= py < l1h and mask.get_at((px, py)):
-                    cov += 1
-            sc_ = cov * 10 + abs(x - W // 2) * 0.05
-            if best is None or sc_ < best[0]:
-                best = (sc_, x)
-        xc = best[1]
+        sw = self.make_sword(int(min(W - 40, l1w + 240) // 5))
+        sx, sy = (W - sw.get_width()) // 2, 104 - sw.get_height() // 2
         logo = pygame.Surface((W, LH), pygame.SRCALPHA)
-        logo.set_clip(pygame.Rect(xc, 0, W - xc, LH))
-        logo.blit(sw, sr)                                  # parte de trás da espada
-        logo.set_clip(None)
+        logo.blit(sw, (sx, sy))
         logo.blit(l2, l2r)
         logo.blit(l1, (lx, ly))
-        logo.set_clip(pygame.Rect(0, 0, xc, LH))
-        logo.blit(sw, sr)                                  # parte da frente (cabo + início da lâmina)
-        logo.set_clip(None)
         try:
             logo = logo.convert_alpha()
         except Exception:
             pass
         self.title_logo = logo
-        self.title_sword = {"cx": W // 2, "cy": yc, "cos": cs, "sin": sn, "s0": 90 - L / 2, "sc": (xc - W // 2) / cs, "st": L / 2 - 6}
+        self.title_sword = {"tip": (sx + sw.get_width() - 6, sy + sw.get_height() // 2)}
 
     def draw_keybar(self, cy):
         items = (("← →", "herói"), ("ENTER", "jogar"), ("C", "config."), ("T", "auto/manual"), ("F11", "tela cheia"), ("ESC", "sair"))
@@ -5590,7 +5561,7 @@ class Game:
         total = sum(kw + 7 + lw for kw, lw in widths) + gap * (len(items) - 1)
         bar = pygame.Rect(0, 0, total + pad * 2, 36)
         bar.center = (W // 2, cy)
-        self.chunky(bar, (16, 14, 38), None, 18, 3, 3, alpha=225)
+        self.chunky(bar, (40, 34, 84), None, 18, 3, 3, alpha=230)
         x = bar.x + pad
         for (k, lab), (kw, lw) in zip(items, widths):
             kr = pygame.Rect(x, cy - 12, kw, 24)
@@ -5815,7 +5786,7 @@ class Game:
             x = (i * 97 + math.sin(t * 0.8 + i) * 30 + t * (6 + i % 5 * 3)) % W
             y = H - ((t * (22 + i % 7 * 7) + i * 53) % (H + 20))
             k = 0.5 + 0.5 * math.sin(t * 5 + i)
-            pygame.draw.circle(scr, (255, int(140 + 90 * k), 60), (int(x), int(y)), 1 + i % 3 // 2)
+            pygame.draw.circle(scr, (255, 240, int(170 + 60 * k)), (int(x), int(y)), 1 + i % 3 // 2)
 
         # título (logo pré-montado: nome + espada atravessando as letras)
         bob = math.sin(t * 1.6) * 4
@@ -5843,7 +5814,7 @@ class Game:
             if sel:
                 for k in range(3, 0, -1):
                     self.rrect(r.inflate(k * 8, k * 8), (*col, 26 * (4 - k)), 22 + k * 3)
-            self.chunky(r, (16, 16, 38), None, 20, 4, 7 if sel else 3, alpha=240 if sel else 200)
+            self.chunky(r, (46, 42, 98) if sel else (38, 36, 82), None, 20, 4, 7 if sel else 3, alpha=240 if sel else 205)
             inner = r.inflate(-8, -8)
             hdr = pygame.Rect(inner.x, inner.y, inner.w, 200)
             self.rrect(hdr, (*shade(col, 0.34), 255 if sel else 170), 16)
