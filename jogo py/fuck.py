@@ -4008,6 +4008,7 @@ class Game:
                 "ok": tone(660, 0.18, 0.2, 400), "bad": tone(200, 0.3, 0.25, -100),
                 "hit": tone(140, 0.15, 0.3, -60), "card": tone(500, 0.35, 0.2, 500),
                 "fall": tone(400, 0.6, 0.2, -300), "crit": tone(900, 0.18, 0.22, 600),
+                "boom": tone(62, 0.7, 0.4, -22), "roar": tone(98, 1.1, 0.42, -58),
             }
         except Exception:
             self.sounds = {}
@@ -4558,7 +4559,7 @@ class Game:
                 self.music_channel.set_volume(0.0)
                 self.music_channel.play(self.music_sound, loops=-1)
                 self.music_channel.set_volume(0.0)
-            want = 0.0 if not self.music_on else (0.22 if self.phase == "gameover" else 0.55) * self.cfg["music_vol"]
+            want = 0.0 if not self.music_on else (0.22 if self.phase == "gameover" else 0.3 if self.phase == "bossintro" else 0.55) * self.cfg["music_vol"]
             cur = self.music_channel.get_volume()
             self.music_channel.set_volume(cur + (want - cur) * 0.08)
         except Exception:
@@ -4640,7 +4641,10 @@ class Game:
                     self.treasure_room()
                 else:
                     self.waypoints = [] if self.manual() else self.find_path((self.px, self.py), (e["x"], e["y"]), e)
-                    self.phase = "walk"
+                    if e is not None and e.get("boss"):
+                        self.start_boss_intro()
+                    else:
+                        self.phase = "walk"
         else:
             self.pz += (gnd - self.pz) * min(1.0, dt * 15)
 
@@ -4738,6 +4742,8 @@ class Game:
             self.pscale = max(0.0, 1 - self.dt_ / 0.7)
             if self.dt_ >= 1.0:
                 self.start_transition("dark")
+        elif ph == "bossintro":
+            self.update_boss_intro(dt)
         elif ph == "dead":
             self.dtm += dt
             if self.dtm >= 0.8:
@@ -5593,6 +5599,201 @@ class Game:
             self.text(lab, 19, (222, 228, 248), (x + kw + 7 + lw // 2, cy), shadow=False)
             x += kw + 7 + lw + gap
 
+    # ------------------------------------------------ cutscene de chefe (estilo apresentação de boss de D&D)
+    BI_DUR = 7.2
+    BOSS_EPITHETS = {
+        "goblin_chief": "O Saqueador das Cavernas", "dragon": "Terror das Chamas Eternas",
+        "werewolf": "A Fera da Lua Cheia", "bat_queen": "Soberana da Noite Sem Fim",
+        "orc_chief": "Senhor da Guerra", "goblin_king": "O Tirano Esmeralda",
+        "beholder": "O Olho que Tudo Vê", "minotaur": "Guardião do Labirinto",
+        "lich": "Mestre dos Mortos", "mind_flayer": "Pesadelo dos Sábios",
+    }
+
+    def start_boss_intro(self):
+        self.phase = "bossintro"
+        self.bi_t = 0.0
+        self.bi_roared = False
+        self.moving = False
+        self.banner_t = 0.0
+        self.play("boom")
+
+    def update_boss_intro(self, dt):
+        self.bi_t += dt
+        e = self.enemy
+        if not self.bi_roared and self.bi_t >= 3.3 and e is not None:     # o chefe ruge
+            self.bi_roared = True
+            self.shake = 16
+            self.flash_t = 0.3
+            self.play("roar")
+            self.spawn(e["x"], e["y"], e["z"] + 0.1, (200, 190, 176), 36, 3.2)
+            self.spawn(e["x"], e["y"], e["z"] + 0.3, (255, 120, 70), 18, 2.4)
+        if self.bi_t >= self.BI_DUR:
+            self.phase = "walk"
+
+    def boss_card(self, kind):
+        """Nome do chefe em letras grandes (vermelho em degradê, contorno grosso e sombra) — fica em cache."""
+        cache = self.__dict__.setdefault("_boss_cards", {})
+        if kind in cache:
+            return cache[kind]
+        name = ENEMY_NAMES.get(kind, kind).upper()
+        size = 88
+        while True:
+            f = self.title_font(size)
+            if f.size(name)[0] <= W - 120 or size <= 36:
+                break
+            size -= 4
+        outline = 5
+        txt = f.render(name, True, (255, 255, 255))
+        w, h = txt.get_size()
+        out = pygame.Surface((w + outline * 2 + 16, h + outline * 2 + 20), pygame.SRCALPHA)
+        ink = f.render(name, True, (18, 4, 10))
+        ox0, oy0 = outline + 8, outline + 4
+        for dx in range(-outline, outline + 1):
+            for dy in range(-outline, outline + 1):
+                if dx * dx + dy * dy <= outline * outline + 1:
+                    out.blit(ink, (ox0 + dx, oy0 + dy))
+        out.blit(ink, (ox0, oy0 + outline + 5))
+        out.blit(f.render(name, True, (255, 230, 220)), (ox0 - 1, oy0 - 2))
+        g = pygame.Surface((w, h), pygame.SRCALPHA)
+        bb = txt.get_bounding_rect()
+        span = max(1, bb.height - 1)
+        for yy in range(h):
+            k = min(1.0, max(0.0, (yy - bb.top) / span))
+            col = (mix((255, 150, 110), k / 0.5, (210, 30, 44)) if k < 0.5
+                   else mix((210, 30, 44), (k - 0.5) / 0.5, (110, 8, 24)))
+            g.fill(col, (0, yy, w, 1))
+        g.blit(txt, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+        out.blit(g, (ox0, oy0))
+        cache[kind] = out
+        return out
+
+    def atext(self, s, size, color, pos, alpha, ink=INK, ow=2):
+        """Texto com contorno e transparência (para fades)."""
+        if alpha <= 3:
+            return
+        f = self.font(size)
+        img, sh = f.render(s, True, color), f.render(s, True, ink)
+        img.set_alpha(alpha)
+        sh.set_alpha(alpha)
+        r = img.get_rect(center=pos)
+        for dx in range(-ow, ow + 1):
+            for dy in range(-ow, ow + 1):
+                if (dx or dy) and dx * dx + dy * dy <= ow * ow + 1:
+                    self.screen.blit(sh, r.move(dx, dy))
+        self.screen.blit(img, r)
+
+    def draw_boss_intro(self):
+        """Câmera de cinema sobre a cena já desenhada: herói -> panorâmica até o chefe -> zoom -> rugido -> nome."""
+        scr, t, D = self.screen, self.bi_t, self.BI_DUR
+        e = self.enemy
+        if e is None:
+            return
+
+        def cl(x):
+            return max(0.0, min(1.0, x))
+
+        def sm(x):
+            x = cl(x)
+            return x * x * (3 - 2 * x)
+
+        def lerp(a, b, k):
+            return a + (b - a) * k
+
+        hs = proj(self.px, self.py, self.pz + 0.9)
+        bs = proj(e["x"], e["y"], e["z"] + 0.9 * e["s"])
+        zhold = max(1.5, min(2.1, 2.1 - 0.35 * (e["s"] - 1.0)))
+        zend = zhold + 0.12
+        center = (W / 2, H / 2)
+
+        def boss_focus(z):          # o chefe fica um pouco acima do meio (sobra espaço para o nome)
+            return (bs[0], bs[1] + 0.08 * H / z)
+
+        if t < 0.8:
+            f, z = hs, 1.7
+        elif t < 3.0:
+            k = sm((t - 0.8) / 2.2)
+            z = lerp(1.7, 1.3, k)
+            bf = boss_focus(z)
+            f = (lerp(hs[0], bf[0], k), lerp(hs[1], bf[1], k))
+        elif t < 4.2:
+            z = lerp(1.3, zhold, sm((t - 3.0) / 1.2))
+            f = boss_focus(z)
+        elif t < 6.2:
+            z = lerp(zhold, zend, (t - 4.2) / 2.0)
+            f = boss_focus(z)
+        else:
+            k = sm((t - 6.2) / 1.0)
+            fh = boss_focus(zend)
+            z = lerp(zend, 1.0, k)
+            f = (lerp(fh[0], center[0], k), lerp(fh[1], center[1], k))
+        if self.bi_roared and t >= 3.3:
+            z += 0.18 * math.exp(-(t - 3.3) * 7.0)       # soco de zoom no rugido
+
+        cw, chh = max(1, int(W / z)), max(1, int(H / z))
+        rect = pygame.Rect(int(f[0] - cw / 2), int(f[1] - chh / 2), cw, chh)
+        rect.clamp_ip(scr.get_rect())
+        if z > 1.001 and rect.w < W:
+            scr.blit(pygame.transform.smoothscale(scr.subsurface(rect), (W, H)), (0, 0))
+        zx, zy = (W / rect.w), (H / rect.h)
+        bpx, bpy = (bs[0] - rect.x) * zx, (bs[1] - rect.y) * zy
+
+        scr.blit(self.vig, (0, 0))
+        if 3.0 <= t < 6.6:
+            scr.blit(self.vig, (0, 0))
+        # brasas subindo
+        if t > 2.4:
+            for i in range(40):
+                x = (i * 83 + math.sin(self.t * 0.9 + i) * 40) % W
+                y = H - ((self.t * (40 + i % 6 * 14) + i * 61) % (H + 20))
+                kk = 0.5 + 0.5 * math.sin(self.t * 5 + i)
+                pygame.draw.circle(scr, (255, int(120 + 90 * kk), 60), (int(x), int(y)), 1 + i % 3 // 2)
+        # tom vermelho + onda de choque do rugido
+        ov = self.__dict__.get("_bi_ov")
+        if ov is None:
+            ov = self._bi_ov = pygame.Surface((W, H), pygame.SRCALPHA)
+        tint = sm((t - 3.0) / 0.8) * (1 - sm((t - 6.2) / 0.8))
+        ring = self.bi_roared and 3.3 <= t < 4.3
+        if tint > 0.01 or ring:
+            ov.fill((140, 10, 20, int(26 * tint)))
+            if ring:
+                u = (t - 3.3) / 1.0
+                pygame.draw.circle(ov, (255, 96, 72, int(200 * (1 - u))), (int(bpx), int(bpy)), int(40 + u * 520), max(2, int(10 * (1 - u))))
+            scr.blit(ov, (0, 0))
+        # nome do chefe
+        if 3.5 <= t < 6.9:
+            a_in = sm((t - 3.5) / 0.55)
+            a_out = 1 - sm((t - 6.2) / 0.6)
+            a = a_in * a_out
+            card = self.boss_card(e["kind"])
+            sc = 1.12 - 0.12 * a_in
+            im = card if abs(sc - 1) < 0.01 else pygame.transform.smoothscale(card, (int(card.get_width() * sc), int(card.get_height() * sc)))
+            im.set_alpha(int(255 * a))
+            scr.blit(im, im.get_rect(center=(W // 2, 448 + int(14 * (1 - a_in)))))
+            self.atext(f"—  CHEFE DO ANDAR {self.floor}  —", 26, (255, 130, 110), (W // 2, 388), int(255 * a))
+            lw = int(520 * sm((t - 3.7) / 0.6) * a_out)
+            if lw > 4:
+                pygame.draw.line(scr, (255, 70, 60), (W // 2 - lw // 2, 506), (W // 2 + lw // 2, 506), 4)
+                pygame.draw.polygon(scr, (255, 214, 120), [(W // 2, 498), (W // 2 + 8, 506), (W // 2, 514), (W // 2 - 8, 506)])
+            ep = self.BOSS_EPITHETS.get(e["kind"], "")
+            self.atext(ep, 34, (255, 226, 160), (W // 2, 534), int(255 * sm((t - 4.1) / 0.5) * a_out))
+        # barras de cinema
+        kb = sm(t / 0.8) * (1 - sm((t - (D - 0.9)) / 0.9))
+        bh = int(0.13 * H * kb)
+        if bh > 0:
+            scr.fill((0, 0, 0), (0, 0, W, bh))
+            scr.fill((0, 0, 0), (0, H - bh, W, bh))
+            if kb > 0.9:
+                pygame.draw.line(scr, (120, 20, 30), (0, bh), (W, bh), 2)
+                pygame.draw.line(scr, (120, 20, 30), (0, H - bh), (W, H - bh), 2)
+                self.text("ENTER  pular", 20, (190, 190, 206), (W - 86, H - bh // 2), shadow=False)
+        # entrada em fade a partir do preto + clarão do rugido
+        if t < 0.8:
+            ov.fill((0, 0, 0, int(255 * (1 - sm(t / 0.8)))))
+            scr.blit(ov, (0, 0))
+        if self.flash_t > 0:
+            ov.fill((255, 255, 255, min(200, int(500 * self.flash_t))))
+            scr.blit(ov, (0, 0))
+
     def draw_title(self):
         if not hasattr(self, "title_sky"):
             self.build_title_art()
@@ -5737,6 +5938,10 @@ class Game:
             return
         self.draw_scene()
         ph = self.phase
+        if ph == "bossintro":
+            self.draw_boss_intro()
+            self.draw_transition()
+            return
         self.draw_hud()
         self.draw_panel()
         if ph == "card":
@@ -5806,6 +6011,9 @@ class Game:
                 self.hero = HEROES[self.hero_index]
             elif go:
                 self.new_run()
+        elif ph == "bossintro":
+            if go:      # pula a cutscene (vai direto para a parte em que a câmera volta ao normal)
+                self.bi_t = max(self.bi_t, self.BI_DUR - 0.7)
         elif ph == "quiz":
             if key in (pygame.K_1, pygame.K_KP1, pygame.K_LEFT, pygame.K_a):
                 self.answer_q(0)
