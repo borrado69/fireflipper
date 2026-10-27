@@ -17,12 +17,24 @@ Controles
   Setas / 1-4 ..... escolher       Tab / J ... diário      Esc ... pausa      F11 ... tela cheia
   Shift ... correr          Puzzles: setas / 1-4 / 0-9, Enter confirma, Esc sai
 
+Configurações (menu inicial ou pausa com C): fonte, contraste e Acessibilidade > Modo cego.
+Modo cego: F8 liga/desliga em qualquer tela; F1 lista os comandos (objetivo, radar, direção, status).
+
 Observação: todos os personagens são fictícios (arquétipos de pessoas reais da época).
 """
+import array
+import atexit
+import json
 import math
+import os
+import queue
 import random
+import re
+import shutil
+import subprocess
 import sys
 import textwrap
+import threading
 
 import pygame
 
@@ -39,7 +51,7 @@ AV0, AV1 = 24, 34         # avenida Atlântica: tiles x de 24 a 33
 BEACH_E = 20              # fim da areia; daqui até a avenida fica o calçadão
 FPS = 60
 
-PIXEL_TEXT = True         # True = texto "pixelado" (grosso); False = texto suave
+PIXEL_TEXT = False        # False = texto suave e legível (padrão); True = pixelado (mude em Configurações)
 
 OUTLINE = (34, 18, 52)
 SHADOW_TINT = (58, 28, 104)
@@ -1477,133 +1489,6 @@ def barraco_sprite(seed):
     return s
 
 
-def barraco70_sprite(seed):
-    """Barraco da Rocinha em 1970: tabuas ou tijolo aparente, telhado de zinco com pedras, cano de fogao."""
-    r = random.Random(seed * 31 + 7)
-    paints = [(204, 160, 104), (160, 122, 88), (222, 190, 130), (126, 168, 156), (198, 116, 100),
-              (226, 210, 158), (146, 158, 184), (180, 196, 126), (232, 150, 90), (214, 214, 200)]
-    wall = r.choice(paints)
-    floors = 2 if r.random() < .32 else 1
-    w = r.choice((32, 34, 36))
-    fh = 17
-    bh = fh * floors + 2
-    rh = 11
-    h = rh + bh
-    s = pygame.Surface((w, h), pygame.SRCALPHA)
-    yb = h - bh
-    for f in range(floors):
-        fy = yb + f * fh
-        hh = fh + (2 if f == floors - 1 else 0)
-        if f == floors - 1 and r.random() < .4:                      # terreo de tijolo aparente
-            bc = (176, 98, 82)
-            pygame.draw.rect(s, tone(bc, -.45), (0, fy, w, hh))
-            pygame.draw.rect(s, bc, (1, fy, w - 2, hh - 1))
-            for yy in range(fy + 2, fy + hh - 1, 3):
-                pygame.draw.line(s, tone(bc, -.3), (1, yy), (w - 2, yy))
-                for xx in range(2 + (yy // 3 % 2) * 3, w - 2, 6):
-                    pygame.draw.line(s, tone(bc, -.3), (xx, yy), (xx, yy + 2))
-        else:
-            wc = tone(wall, -.08 * f)
-            pygame.draw.rect(s, tone(wc, -.5), (0, fy, w, hh))
-            pygame.draw.rect(s, wc, (1, fy, w - 2, hh - 1))
-            for xx in range(3, w - 2, 3):                            # tabuas
-                pygame.draw.line(s, tone(wc, -.22), (xx, fy), (xx, fy + hh - 2))
-            for _ in range(2):                                       # remendos
-                pygame.draw.rect(s, tone(wc, r.choice((-.3, .25))), (r.randrange(2, w - 8), fy + r.randrange(2, hh - 6), r.randint(3, 6), r.randint(3, 5)))
-    zc = r.choice(((150, 156, 168), (164, 112, 90), (138, 144, 156), (176, 124, 98), (118, 128, 140)))
-    pygame.draw.polygon(s, tone(zc, -.45), [(0, yb + 1), (4, 2), (w - 5, 2), (w - 1, yb + 1)])
-    pygame.draw.polygon(s, zc, [(1, yb), (5, 3), (w - 6, 3), (w - 2, yb)])
-    s.set_clip(pygame.Rect(5, 3, w - 10, yb - 3))
-    for xx in range(4, w - 4, 3):                                    # chapas de zinco
-        pygame.draw.line(s, tone(zc, .25), (xx, 3), (xx, yb))
-        pygame.draw.line(s, tone(zc, -.2), (xx + 1, 3), (xx + 1, yb))
-    s.set_clip(None)
-    pygame.draw.rect(s, tone(zc, -.55), (0, yb, w, 2))
-    for _ in range(r.randint(1, 3)):                                 # pedras segurando o zinco
-        px_, py_ = r.randint(7, w - 12), r.randint(4, max(4, yb - 5))
-        pygame.draw.ellipse(s, (110, 104, 116), (px_, py_, 5, 3))
-        pygame.draw.ellipse(s, (172, 166, 178), (px_, py_, 4, 2))
-    if r.random() < .5:                                              # cano do fogao
-        cx_ = r.randint(w // 2, w - 8)
-        pygame.draw.rect(s, (66, 60, 78), (cx_, 0, 2, 7))
-        pygame.draw.rect(s, (110, 104, 124), (cx_ - 1, 0, 4, 1))
-    pygame.draw.line(s, (40, 34, 50), (w - 4, 4), (w - 1, 1))        # gambiarra da luz
-    dx = r.randint(4, w - 14)
-    pygame.draw.rect(s, (70, 50, 48), (dx, h - 14, 8, 13))
-    pygame.draw.rect(s, (126, 90, 72), (dx + 1, h - 13, 6, 11))
-    s.set_at((dx + 6, h - 8), (240, 210, 120))
-    wx = w - 13 if dx < w // 2 else 4
-    pygame.draw.rect(s, (70, 60, 90), (wx, h - 16, 9, 8))
-    pygame.draw.rect(s, (255, 226, 130) if r.random() < .7 else (120, 150, 200), (wx + 1, h - 15, 7, 6))
-    pygame.draw.rect(s, tone(wall, -.35), (wx - 3 if wx > 6 else wx + 9, h - 16, 3, 8))
-    if floors == 2:
-        for wx2 in (4, w - 12):
-            pygame.draw.rect(s, (70, 60, 90), (wx2, yb + 4, 8, 8))
-            pygame.draw.rect(s, (255, 226, 130) if r.random() < .6 else (120, 150, 200), (wx2 + 1, yb + 5, 6, 6))
-    if r.random() < .5:                                              # lata d'agua na porta
-        pygame.draw.rect(s, (60, 90, 140), (max(0, dx - 5), h - 7, 4, 6))
-        pygame.draw.rect(s, (110, 150, 200), (max(0, dx - 5), h - 7, 3, 5))
-    overlay(s, (w - 7, yb, 6, bh), (60, 24, 100, 55))
-    return s
-
-
-def bica_sprite():
-    """Bica d'agua publica: torneira de concreto e latas d'agua esperando a vez."""
-    s = pygame.Surface((30, 26), pygame.SRCALPHA)
-    pygame.draw.ellipse(s, (96, 140, 190), (2, 20, 26, 6))
-    pygame.draw.ellipse(s, (150, 190, 226), (5, 21, 14, 3))
-    pygame.draw.rect(s, (112, 104, 118), (8, 8, 12, 15))
-    pygame.draw.rect(s, (176, 168, 178), (9, 8, 10, 14))
-    pygame.draw.rect(s, (214, 208, 214), (9, 8, 10, 2))
-    pygame.draw.rect(s, (86, 86, 104), (13, 3, 3, 8))
-    pygame.draw.rect(s, (86, 86, 104), (13, 3, 8, 2))
-    pygame.draw.rect(s, (60, 60, 80), (19, 5, 2, 3))
-    pygame.draw.line(s, (150, 200, 240), (20, 8), (20, 17))
-    for cx_, cy_ in ((1, 14), (22, 15), (25, 19)):
-        pygame.draw.rect(s, (110, 116, 132), (cx_, cy_, 5, 7))
-        pygame.draw.rect(s, (190, 196, 210), (cx_, cy_, 4, 6))
-        pygame.draw.rect(s, (230, 234, 244), (cx_ + 1, cy_, 1, 5))
-    return s
-
-
-def venda_sprite():
-    """Venda/bar de madeira do largo da Rocinha, com toldo de lona e garrafas na prateleira."""
-    w, h = 44, 42
-    s = pygame.Surface((w, h), pygame.SRCALPHA)
-    pygame.draw.polygon(s, (92, 98, 112), [(0, 14), (5, 2), (w - 6, 2), (w, 14)])
-    pygame.draw.polygon(s, (150, 156, 168), [(1, 13), (6, 3), (w - 7, 3), (w - 1, 13)])
-    for xx in range(8, w - 8, 3):
-        pygame.draw.line(s, (186, 190, 200), (xx, 4), (xx, 12))
-    pygame.draw.rect(s, (84, 56, 52), (1, 14, w - 2, h - 14))
-    pygame.draw.rect(s, (176, 124, 88), (2, 14, w - 4, h - 15))
-    for xx in range(4, w - 3, 3):
-        pygame.draw.line(s, (140, 96, 70), (xx, 14), (xx, h - 2))
-    pygame.draw.rect(s, (46, 30, 40), (8, 22, 28, 12))
-    pygame.draw.rect(s, (252, 214, 120), (10, 24, 24, 8))
-    for i, c in enumerate(((60, 160, 90), (220, 90, 70), (240, 200, 80), (90, 140, 210), (220, 90, 70))):
-        pygame.draw.rect(s, c, (12 + i * 4, 26, 2, 5))
-    pygame.draw.rect(s, (110, 74, 58), (6, 33, 32, 7))
-    pygame.draw.rect(s, (200, 150, 104), (6, 33, 32, 2))
-    for i in range(0, w, 6):
-        pygame.draw.rect(s, (214, 70, 66) if (i // 6) % 2 == 0 else (246, 238, 226), (i, 14, 6, 6))
-    pygame.draw.rect(s, (60, 30, 30), (13, 5, 18, 9))
-    pygame.draw.rect(s, (240, 226, 190), (14, 6, 16, 7))
-    draw_tiny(s, "BAR", 17, 7, (170, 40, 40))
-    return s
-
-
-def placa_sprite():
-    """Placa de madeira na entrada do morro."""
-    s = pygame.Surface((36, 30), pygame.SRCALPHA)
-    pygame.draw.rect(s, (92, 62, 50), (5, 18, 3, 12))
-    pygame.draw.rect(s, (92, 62, 50), (28, 18, 3, 12))
-    pygame.draw.rect(s, (60, 50, 70), (0, 0, 36, 20))
-    pygame.draw.rect(s, (240, 236, 220), (1, 1, 34, 18))
-    draw_tiny(s, "ROCINHA", 4, 3, (190, 50, 50))
-    draw_tiny(s, "1970", 10, 11, (70, 60, 90))
-    return s
-
-
 def barraca_sprite(c1, c2, r):
     """Barraca de feira com toldo listrado e frutas."""
     s = pygame.Surface((38, 36), pygame.SRCALPHA)
@@ -2203,38 +2088,6 @@ def draw_degraus(g, tx, ty, rnd):
         g.fill((120, 150, 100), (x0 + rnd.randrange(12), y0 + rnd.randrange(14), 2, 2))
 
 
-def draw_beco(g, tx, ty, rnd):
-    """Beco da Rocinha: cimento gasto e terra batida, com remendos e poças de esgoto."""
-    x0, y0 = tx * TS, ty * TS
-    c = shade((178, 150, 126), rnd.randint(-6, 6))
-    g.fill(c, (x0, y0, TS, TS))
-    g.fill(tone(c, -.28), (x0, y0, TS, 2))
-    g.fill(tone(c, .12), (x0, y0 + 2, TS, 1))
-    for _ in range(7):
-        g.fill(tone(c, rnd.choice((-.18, .18))), (x0 + rnd.randrange(TS - 2), y0 + rnd.randrange(3, TS - 1), rnd.randrange(1, 4), 1))
-    if rnd.random() < .3:
-        g.fill(tone(c, .2), (x0 + rnd.randrange(8), y0 + rnd.randrange(4, 10), rnd.randrange(4, 8), 3))
-    if rnd.random() < .12:
-        pygame.draw.ellipse(g, (96, 108, 128), (x0 + rnd.randrange(6), y0 + 9, 9, 4))
-        pygame.draw.ellipse(g, (140, 156, 176), (x0 + rnd.randrange(6) + 2, y0 + 10, 4, 2))
-
-
-def draw_telhados(g, tx, ty, rnd):
-    """Chao sob os barracos (nao se anda): telhados de zinco, telha e lona vistos de cima."""
-    x0, y0 = tx * TS, ty * TS
-    g.fill((78, 60, 72), (x0, y0, TS, TS))
-    roofs = ((150, 156, 168), (168, 108, 84), (132, 138, 150), (184, 120, 92), (120, 128, 140), (96, 140, 150),
-             (176, 150, 110), (150, 100, 96))
-    for i in range(2):
-        for j in range(2):
-            c = roofs[_hash(tx * 2 + i, ty * 2 + j, 3) % len(roofs)]
-            bx, by = x0 + i * 8, y0 + j * 8
-            g.fill(tone(c, -.35), (bx, by, 8, 8))
-            g.fill(c, (bx, by, 7, 7))
-            for k in range(1, 7, 2):
-                g.fill(tone(c, .22), (bx + k, by, 1, 7))
-
-
 def draw_water(g, tx, ty, rnd):
     x0, y0 = tx * TS, ty * TS
     c = shade((84, 160, 196), rnd.randint(-5, 5))
@@ -2268,8 +2121,8 @@ def draw_azulejo(g, tx, ty, rnd):
 
 
 TILE_DRAW = {6: draw_beach_tile, 7: draw_beach_tile, 8: draw_calcadao, 9: draw_morro,
-             10: draw_degraus, 11: draw_water, 12: draw_pitch, 13: draw_azulejo, 15: draw_beco, 16: draw_telhados}
-BLOCK_T = (0, 6, 9, 11, 16)   # tiles em que não se anda: avenida, mar, rocha, lagoa e telhados da Rocinha
+             10: draw_degraus, 11: draw_water, 12: draw_pitch, 13: draw_azulejo}
+BLOCK_T = (0, 6, 9, 11)       # tiles em que não se anda: avenida, mar, rocha e lagoa
 CROSS_ROWS = ((7, 8), (19, 20), (37, 38), (58, 59), (77, 78))     # travessias de pedestre da avenida
 
 
@@ -2283,7 +2136,7 @@ def district(px, py):
     if tx < AV1 + 4:
         return "Avenida Atlântica"
     if tx >= 87:
-        return "Favela da Rocinha"
+        return "Morro da Esperança"
     if ty < 9:
         return "Arcos da Lapa"
     if ty < 18:
@@ -2306,44 +2159,6 @@ def district(px, py):
 def shore(y):
     return AV1
 
-
-# ----------------------------------------------------------------------------
-# Rocinha, 1970: um morro so, com becos estreitos (1 tile) em terracos, escadarias ligando um beco ao outro,
-# um largo na entrada (bica d'agua e venda) e barracos de madeira e zinco em todo o resto
-# ----------------------------------------------------------------------------
-ROC_X0, ROC_X1 = 88, 108                  # colunas do morro (x1 exclusivo)
-ROC_ROWS = tuple(range(20, 86, 5))        # linha de cada beco horizontal (as casas ficam na borda de cima)
-ROC_LARGO = (88, 46, 93, 50)              # largo da entrada (x0, y0, x1, y1), entre os becos 45 e 50
-
-
-def _roc_stairs():
-    """Escadas e becos de ligacao entre dois becos: (x, y0, y1, largura, tile) por trecho."""
-    r = random.Random(1970)
-    segs = []
-    n = len(ROC_ROWS)
-    for k in range(n - 1):
-        ya, yb = ROC_ROWS[k] + 1, ROC_ROWS[k + 1]
-        if k == n - 2:                    # ultimo trecho: o resto e muro pichado
-            cols = [(88, 2, 10), (91, 1, 15)]
-        else:
-            lo, hi = (89, 93) if k % 2 == 0 else (101, 105)
-            if ROC_ROWS[k] == 45:         # abaixo do largo
-                lo, hi = 99, 105
-            x1 = r.randint(lo, hi)
-            dmin = 4 if ROC_ROWS[k] == 45 else 6
-            cand = [x for x in range(89, 107) if abs(x - (x1 + 1.0)) >= dmin and (ROC_ROWS[k] != 45 or x >= 96)]
-            cols = [(x1, 2, 10), (r.choice(cand), 1, r.choice((10, 15)))]
-        segs.append([(x, ya, yb, w, t) for x, w, t in cols])
-    return segs
-
-
-ROC_SEGS = _roc_stairs()
-ROC_LOOPS = []                            # trajetos de pedestres: sobem uma escada e descem pela outra
-for _k in (1, 3, 6, 8, 10, 12):
-    _a, _b = ROC_SEGS[_k][0], ROC_SEGS[_k][1]
-    _xa, _xb = (_a[0] + _a[3] / 2.0) * TS, (_b[0] + _b[3] / 2.0) * TS
-    _ya, _yb = ROC_ROWS[_k] * TS + 11, ROC_ROWS[_k + 1] * TS + 11
-    ROC_LOOPS.append([(_xa, _ya), (_xb, _ya), (_xb, _yb), (_xa, _yb)])
 
 TILE_COL = {0: (92, 82, 110), 1: (228, 204, 182), 2: (92, 152, 100),
             3: (180, 132, 124), 4: (58, 114, 92), 5: (206, 178, 164)}
@@ -2420,23 +2235,19 @@ def build_tiles():
             d2 = dx * dx + dy * dy
             if d2 < 1.0:
                 tiles[y][x] = 9 if (d2 > 0.5 and x < 15) else 5
-    # morro: mata e rochas ao fundo
+    # morro: mata, rochas ao fundo, escadarias e becos
     fill(88, 14, MW, MH, 4)
     fill(88, 0, MW, 14, 9)
     fill(MW - 4, 14, MW, MH, 9)
     fill(88, MH - 2, MW, MH, 9)
-    # Rocinha (1970): barracos por todo o morro, becos estreitos em terracos e escadarias entre eles
-    fill(ROC_X0, ROC_ROWS[0] - 4, ROC_X1, ROC_ROWS[-1] + 5, 16)
-    for row in ROC_ROWS:
-        fill(ROC_X0, row, ROC_X1, row + 1, 15)
-    for seg in ROC_SEGS:
-        for sx, sy0, sy1, sw, st in seg:
-            fill(sx, sy0, sx + sw, sy1, st)
-    fill(ROC_LARGO[0], ROC_LARGO[1], ROC_LARGO[2], ROC_LARGO[3], 5)
+    fill(89, 14, 91, MH - 2, 10)
+    fill(99, 14, 100, MH - 2, 10)
+    for row in MORRO_ROWS:
+        fill(89, row, 108, row + 1, 10)
     return tiles
 
 
-MORRO_ROWS = ROC_ROWS
+MORRO_ROWS = tuple(range(20, 85, 6))
 LAGOA_C = (74, 68)
 FEIRA_X = (41, 45, 54, 58, 62, 66)
 BEACH_KIOSK_ROWS = (18, 31, 53, 66, 78)
@@ -2708,8 +2519,7 @@ def build_minimap(tiles):
     cols = {0: (70, 62, 90), 1: (226, 204, 186), 2: (112, 176, 110),
             3: (196, 140, 134), 4: (62, 126, 100), 5: (214, 186, 170),
             6: (40, 100, 160), 7: (238, 212, 168), 8: (230, 224, 226), 9: (50, 98, 80),
-            10: (190, 176, 178), 11: (84, 160, 196), 12: (110, 172, 98), 13: (230, 170, 70), 14: (70, 62, 90),
-            15: (176, 150, 128), 16: (160, 108, 92)}
+            10: (190, 176, 178), 11: (84, 160, 196), 12: (110, 172, 98), 13: (230, 170, 70), 14: (70, 62, 90)}
     for y in range(MH):
         for x in range(MW):
             m.fill(cols[tiles[y][x]], (x * 2, y * 2, 2, 2))
@@ -3312,10 +3122,350 @@ def wrap(text, font, maxw):
 # ----------------------------------------------------------------------------
 # Fonte pixelada: desenha pequeno, sem suavização, e amplia por um fator inteiro
 # ----------------------------------------------------------------------------
+try:
+    _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+except NameError:
+    _BASE_DIR = os.getcwd()
+CONFIG_PATH = os.path.join(_BASE_DIR, "ditadura_config.json")
+DEFAULT_CFG = dict(font_scale=1, font_style=0, text_speed=0, contrast=0, blind=0, voice_rate=1, sonar=1)
+OPT_LABELS = dict(
+    font_scale=("Normal", "Grande", "Muito grande"),
+    font_style=("Legível", "Pixel original"),
+    text_speed=("Normal", "Rápida", "Instantânea"),
+    contrast=("Desligado", "Ligado"),
+    blind=("Desligado", "Ligado"),
+    voice_rate=("Lenta", "Normal", "Rápida"),
+    sonar=("Desligado", "Ligado"),
+)
+FONT_SCALES = (0.86, 1.0, 1.22)
+TEXT_CPS = (60.0, 150.0, 1e9)
+TITLE_ITEMS = ("Iniciar", "Configurações", "Sair")
+TONE_FREQS = (330, 440, 554, 660)
+
+INTRO_LINES = ["OPERAÇÃO VERDADE", "Brasil, 1970 - Anos de Chumbo", "",
+               "Há seis anos o país vive sob uma ditadura militar.",
+               "O Congresso está fechado, a imprensa é censurada e quem discorda some.",
+               "Você é o Agente Rosso, um porco espião de uma rede clandestina.",
+               "Ligue para a Central e procure o Professor Mário, da rede.",
+               "Escolha uma linha (Igreja, Rádio ou Imprensa): depois não há volta. Casa = porta rosa.",
+               "Reúna testemunhas e entregue o dossiê a Helen Harper.",
+               "15 min de prazo. Shift = correr. Itens perto da polícia dão suspeita. Há segredos!",
+               "", "[Enter]"]
+
+HELP_TEXT = ("Comandos do modo cego. Setas ou W A S D: andar. Shift: correr. E, espaço ou Enter: falar ou usar. "
+             "F2 ou O: repete o objetivo. F3 ou R: radar, o que há por perto. F4 ou G: direção e distância do objetivo. "
+             "F5 ou T: tempo, provas e suspeita. F6: liga ou desliga os bipes do sonar. F7 ou N: repete a última fala. "
+             "F8: liga ou desliga o modo cego. Tab ou J: diário. Escape: pausa. "
+             "No sonar, bipes mais rápidos significam que o objetivo está mais perto. Som agudo: objetivo acima. "
+             "Som grave: abaixo. O lado do som indica esquerda ou direita. Um bipe grave curto avisa que você bateu numa parede.")
+
+
+def load_cfg():
+    cfg = dict(DEFAULT_CFG)
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        for k in DEFAULT_CFG:
+            if k in data:
+                v = int(data[k])
+                if 0 <= v < len(OPT_LABELS[k]):
+                    cfg[k] = v
+    except Exception:
+        pass
+    return cfg
+
+
+def save_cfg(cfg):
+    try:
+        with open(CONFIG_PATH, "w", encoding="utf-8") as fh:
+            json.dump(cfg, fh, indent=1)
+    except Exception:
+        pass
+
+
+_FONT_PATH = None
+_FONT_CACHE = {}
+
+
+def load_ui_font(px):
+    """Fonte sem serifa e legível do sistema (Segoe UI, Verdana, DejaVu...); cai na fonte padrão do pygame."""
+    global _FONT_PATH
+    if _FONT_PATH is None:
+        _FONT_PATH = ""
+        for name in ("segoeui", "verdana", "dejavusans", "liberationsans", "notosans", "freesans", "arial",
+                     "ubuntu", "tahoma", "helveticaneue"):
+            try:
+                p = pygame.font.match_font(name)
+            except Exception:
+                p = None
+            if p:
+                _FONT_PATH = p
+                break
+    key = (px, bool(_FONT_PATH))
+    if key not in _FONT_CACHE:
+        if _FONT_PATH:
+            _FONT_CACHE[key] = pygame.font.Font(_FONT_PATH, px)
+        else:
+            _FONT_CACHE[key] = pygame.font.Font(None, int(px * 1.4))
+    return _FONT_CACHE[key]
+
+
+def dir_text(dx, dy):
+    ax, ay = abs(dx), abs(dy)
+    if ax < 8 and ay < 8:
+        return "bem aqui"
+    h = "à direita" if dx > 0 else "à esquerda"
+    v = "abaixo" if dy > 0 else "acima"
+    if ax > 2 * ay:
+        return h
+    if ay > 2 * ax:
+        return v
+    return "%s e %s" % (v, h)
+
+
+def dist_text(d, unit=16.0):
+    n = int(round(d / unit))
+    return "%d passo%s" % (n, "" if n == 1 else "s")
+
+
+_TTS_SUBS = ((r"Cr\$\s*(\d+)", r"\1 cruzeiros"), (r"AI-5", "A I cinco"), (r"\[Enter\]", ""),
+             (r"(\d+)\s*/\s*(\d+)", r"\1 de \2"), (r"\bEsc\b", "Escape"), (r"\s+", " "))
+
+
+class Narrator:
+    """Narração por voz sintetizada do próprio sistema (PowerShell/SAPI, say, espeak-ng, spd-say ou pyttsx3)."""
+    CLI_RATES = dict(say=(150, 185, 235), espeak=(130, 165, 210), spd=(-35, 0, 45))
+    PS_SCRIPT = (
+        "[Console]::InputEncoding=[System.Text.Encoding]::UTF8;"
+        "Add-Type -AssemblyName System.Speech;"
+        "$s=New-Object System.Speech.Synthesis.SpeechSynthesizer;"
+        "try{$s.SelectVoiceByHints([System.Speech.Synthesis.VoiceGender]::NotSet,"
+        "[System.Speech.Synthesis.VoiceAge]::NotSet,0,[System.Globalization.CultureInfo]::GetCultureInfo('pt-BR'))}catch{};"
+        "$r=@(-2,0,3);"
+        "while(($l=[Console]::In.ReadLine()) -ne $null){"
+        "$i=$l.IndexOf('|');if($i -lt 2){continue};"
+        "$s.Rate=$r[[int]$l.Substring(1,$i-1)];"
+        "if($l.Substring(0,1) -eq 'C'){$s.SpeakAsyncCancelAll()};"
+        "$s.SpeakAsync($l.Substring($i+1))|Out-Null}"
+    )
+
+    def __init__(self):
+        self.kind = None
+        self.name = ""
+        self.exe = None
+        self.voice = None
+        self.rate = 1
+        self.last = ""
+        self.proc = None
+        self.eng = None
+        self.q = queue.Queue()
+        self.started = False
+        self.detected = False
+
+    def _detect_once(self):
+        if self.detected:
+            return
+        self.detected = True
+        try:
+            if sys.platform.startswith("win"):
+                ps = shutil.which("powershell") or shutil.which("pwsh")
+                if ps:
+                    self.kind, self.exe, self.name = "ps", ps, "voz do Windows"
+            elif sys.platform == "darwin":
+                if shutil.which("say"):
+                    self.kind, self.exe, self.name = "say", "say", "voz do macOS"
+                    try:
+                        out = subprocess.run(["say", "-v", "?"], capture_output=True, text=True, timeout=4).stdout
+                        for ln in out.splitlines():
+                            if "pt_BR" in ln:
+                                self.voice = re.split(r"\s{2,}", ln.strip())[0]
+                                break
+                    except Exception:
+                        pass
+            else:
+                for exe in ("espeak-ng", "espeak"):
+                    if shutil.which(exe):
+                        self.kind, self.exe, self.name = "espeak", exe, exe
+                        break
+                else:
+                    if shutil.which("spd-say"):
+                        self.kind, self.exe, self.name = "spd", "spd-say", "speech-dispatcher"
+            if not self.kind:
+                import pyttsx3  # noqa: F401
+                self.kind, self.name = "pyttsx3", "pyttsx3"
+        except Exception:
+            pass
+
+    def available(self):
+        self._detect_once()
+        return self.kind is not None
+
+    def status(self):
+        if self.available():
+            return "Voz: " + self.name
+        return "Nenhuma voz encontrada. No Linux instale o espeak-ng; em outros sistemas use: pip install pyttsx3"
+
+    @staticmethod
+    def clean(text):
+        t = str(text).replace("\n", " ")
+        for pat, rep_ in _TTS_SUBS:
+            t = re.sub(pat, rep_, t)
+        return t.strip().lstrip("-").strip()
+
+    def _start(self):
+        if self.started or not self.available():
+            return
+        self.started = True
+        try:
+            if self.kind == "ps":
+                flags = 0x08000000 if sys.platform.startswith("win") else 0
+                self.proc = subprocess.Popen([self.exe, "-NoProfile", "-NonInteractive", "-Command", self.PS_SCRIPT],
+                                             stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                                             stderr=subprocess.DEVNULL, creationflags=flags)
+            else:
+                threading.Thread(target=self._worker, daemon=True).start()
+            atexit.register(self.close)
+        except Exception:
+            self.kind = None
+
+    def _cmd(self, text):
+        r = self.CLI_RATES[self.kind][self.rate]
+        if self.kind == "say":
+            return ["say"] + (["-v", self.voice] if self.voice else []) + ["-r", str(r), text]
+        if self.kind == "espeak":
+            return [self.exe, "-v", "pt-br" if self.exe == "espeak-ng" else "pt", "-s", str(r), text]
+        return ["spd-say", "-l", "pt-BR", "-r", str(r), "-w", text]
+
+    def _worker(self):
+        while True:
+            text = self.q.get()
+            try:
+                if self.kind == "pyttsx3":
+                    if self.eng is None:
+                        import pyttsx3
+                        self.eng = pyttsx3.init()
+                        for v in self.eng.getProperty("voices"):
+                            if "pt" in str(v.id).lower() or "portug" in str(v.name).lower():
+                                self.eng.setProperty("voice", v.id)
+                                break
+                    self.eng.setProperty("rate", (150, 185, 230)[self.rate])
+                    self.eng.say(text)
+                    self.eng.runAndWait()
+                else:
+                    self.proc = subprocess.Popen(self._cmd(text), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    self.proc.wait()
+            except Exception:
+                pass
+
+    def _kill(self):
+        try:
+            while True:
+                self.q.get_nowait()
+        except queue.Empty:
+            pass
+        try:
+            if self.eng is not None:
+                self.eng.stop()
+        except Exception:
+            pass
+        try:
+            if self.proc is not None and self.proc.poll() is None:
+                self.proc.terminate()
+        except Exception:
+            pass
+
+    def say(self, text, interrupt=True):
+        text = self.clean(text)
+        if not text or not self.available():
+            return
+        self.last = text
+        self._start()
+        try:
+            if self.kind == "ps":
+                mode = "C" if interrupt else "Q"
+                self.proc.stdin.write(("%s%d|%s\n" % (mode, self.rate, text)).encode("utf-8"))
+                self.proc.stdin.flush()
+            else:
+                if interrupt:
+                    self._kill()
+                self.q.put(text)
+        except Exception:
+            self.kind = None
+
+    def stop(self):
+        try:
+            if self.kind == "ps" and self.proc is not None:
+                self.proc.stdin.write(("C%d| \n" % self.rate).encode("utf-8"))
+                self.proc.stdin.flush()
+            else:
+                self._kill()
+        except Exception:
+            pass
+
+    def close(self):
+        try:
+            if self.proc is not None:
+                if self.kind == "ps":
+                    try:
+                        self.proc.stdin.close()
+                    except Exception:
+                        pass
+                self.proc.terminate()
+        except Exception:
+            pass
+
+
+class Beeper:
+    """Bipes e tons gerados na hora (sonar do modo cego, puzzle de toques)."""
+
+    def __init__(self):
+        self.ok = False
+        self.cache = {}
+        self.fr, self.ch = 22050, 2
+        try:
+            if not pygame.mixer.get_init():
+                pygame.mixer.init(22050, -16, 2, 512)
+            fr, fmt, ch = pygame.mixer.get_init()
+            if fmt == -16:
+                self.fr, self.ch, self.ok = fr, ch, True
+        except Exception:
+            pass
+
+    def _make(self, freq, dur):
+        key = (int(freq), int(dur * 1000))
+        snd = self.cache.get(key)
+        if snd is None:
+            n = int(self.fr * dur)
+            fade = max(1, int(self.fr * 0.01))
+            buf = array.array("h")
+            for i in range(n):
+                env = min(1.0, i / float(fade), (n - i) / float(fade))
+                v = int(math.sin(2 * math.pi * freq * i / self.fr) * 16000 * env)
+                for _ in range(self.ch):
+                    buf.append(v)
+            snd = pygame.mixer.Sound(buffer=buf.tobytes())
+            self.cache[key] = snd
+        return snd
+
+    def beep(self, freq=660, dur=0.09, pan=0.0, vol=0.6):
+        if not self.ok:
+            return
+        try:
+            chan = self._make(freq, dur).play()
+            if chan:
+                chan.set_volume(vol * (1 - max(0.0, pan)), vol * (1 + min(0.0, pan)))
+        except Exception:
+            pass
+
+
 class PixFont:
-    def __init__(self, base, k):
+    def __init__(self, base, k, px=None):
         self.k = k if PIXEL_TEXT else 1
-        self.f = pygame.font.Font(None, base if PIXEL_TEXT else base * k)
+        if px is not None and not PIXEL_TEXT:
+            self.f = load_ui_font(px)
+        else:
+            self.f = pygame.font.Font(None, base if PIXEL_TEXT else base * k)
+        self.lh = self.f.get_linesize() * self.k
 
     def size(self, s):
         w, h = self.f.size(s)
@@ -3417,7 +3567,7 @@ NPC_ROUTES = {
     "zeca": dict(speed=16, stops=[(16, 40, 14, 26), (22, 45, 10, 18), (54, 43, 8, 14), (18, 55, 10, 18), (17, 27, 10, 18)]),
     "lucia": dict(speed=15, stops=[(66, 16, 12, 20), (43, 17, 10, 16), (56, 36, 8, 14), (64, 68, 10, 18), (77, 40, 8, 12)]),
     "dom": dict(speed=12, stops=[(51, 16, 14, 24), (60, 35, 10, 16), (77, 40, 10, 18), (46, 17, 8, 14)]),
-    "nelson": dict(speed=14, stops=[(50, 62, 12, 20), (95, 35, 12, 20), (47, 61, 8, 14), (62, 45, 10, 16), (50, 68, 8, 14)]),
+    "nelson": dict(speed=14, stops=[(50, 62, 12, 20), (95, 33, 12, 20), (47, 61, 8, 14), (62, 45, 10, 16), (50, 68, 8, 14)]),
     "osmar": dict(speed=12, stops=[(52, 32, 10, 18), (60, 41, 8, 14), (70, 18, 10, 16), (44, 23, 8, 14)]),
     "brandao": dict(speed=14, stops=[(55, 34, 10, 16), (36, 30, 8, 12), (70, 18, 8, 14), (77, 45, 8, 12)]),
     "tiao": dict(speed=26, stops=[(53, 39, 4, 8), (50, 67, 6, 12), (66, 66, 4, 8), (60, 18, 4, 8), (22, 33, 4, 8)]),
@@ -3603,14 +3753,14 @@ def chest_sprite(open_=False):
 
 # favelas novas (x, y da base em tiles): comunidade ao sul do campinho
 FAVELA_NOVA = [(38.8, 64.6), (41.8, 65.0), (38.8, 68.6), (38.8, 72.6), (41.8, 73.0)]
-PIXACOES = [(42.3, 68.6, True), (94.5, 85.0, True), (103.0, 85.0, False), (47.0, 61.6, False)]   # (x, y, duas linhas?)
-VARAIS = [(40.3, 66.8), (98.0, 30.9), (98.0, 45.9), (98.0, 65.9), (93.0, 55.9), (103.0, 75.9), (95.0, 40.9), (101.0, 60.9)]
+PIXACOES = [(42.3, 68.6, True), (95.5, 85.5, True), (103.0, 86.5, False), (47.0, 61.6, False)]   # (x, y, duas linhas?)
+VARAIS = [(40.3, 66.8), (98.0, 29.5), (98.0, 47.5), (98.0, 65.5)]
 POSTER_SPOTS = [(86, 14), (86, 27), (86, 41), (86, 53), (83, 34), (46, 60), (60, 60), (73, 60),
                 (36, 12), (36, 48), (36, 66)]
 
 # SEGREDOS: difíceis de achar; exigem puzzles, enigmas ou uma ação específica
 SECRET_CODE = (3, 1, 0, 3)           # 31/03: o dia do golpe de 1964 (DDMM)
-SECRET_POSTERS = [((100, 30), 0), ((22, 33), 1), ((64, 68), 2), ((77, 40), 3)]   # (tile, posição do dígito)
+SECRET_POSTERS = [((98, 32), 0), ((22, 33), 1), ((64, 68), 2), ((77, 40), 3)]   # (tile, posição do dígito)
 ESCUTA_T = 6.0                       # segundos parado, segurando E, sem policial por perto
 SECRETS = {
     "bau": dict(tile=(107, 80), item="diario", fx=dict(evid=8, cash=60),
@@ -5887,13 +6037,20 @@ class Game(RoomsMixin):
         except Exception:
             self.screen = pygame.display.set_mode((W, H))
         self.fps_clock = pygame.time.Clock()
-        self.f_title = PixFont(50, 3)
-        self.f_big = PixFont(26, 2)
-        self.f_med = PixFont(18, 2)
-        self.f_txt = PixFont(16, 2)
-        self.f_ch = PixFont(15, 2)
-        self.f_sm = PixFont(12, 2)
-        self.f_xs = PixFont(10, 2)
+        self.cfg = load_cfg()
+        self.narrator = Narrator()
+        self.narrator.rate = self.cfg["voice_rate"]
+        self.beeper = Beeper()
+        self._n = {}
+        self._n_state = None
+        self._n_toast = None
+        self._n_soft = False
+        self._ndist = None
+        self.settings_from = "title"
+        self.set_page, self.set_i = "main", 0
+        self.set_rects = []
+        self.title_i = 0
+        self.build_fonts()
         self.screen.fill((22, 10, 46))
         self.screen.blit(self.f_big.render("Carregando o Rio de Janeiro...", True, (255, 226, 150)), (W // 2 - 190, H // 2 - 14))
         pygame.display.flip()
@@ -5912,8 +6069,12 @@ class Game(RoomsMixin):
         self.build_rooms()
 
         self.copa = CopaScene()
-        self.title_btn = pygame.Rect(0, 0, 360, 78)
-        self.title_btn.center = (640, 500)
+        self.title_rects = []
+        for i in range(len(TITLE_ITEMS)):
+            r = pygame.Rect(0, 0, 360, 66)
+            r.center = (640, 462 + i * 80)
+            self.title_rects.append(r)
+        self.title_btn = self.title_rects[0]
         self.state = "title"
         self.t = 0.0
         self.menu_i = 0
@@ -6172,28 +6333,14 @@ class Game(RoomsMixin):
             if 0 < y < MH * TS - 4:
                 add(Obj(palms[a % 3], x, y, col=pygame.Rect(x - 3, y - 4, 6, 4)))
 
-        # ---- Rocinha (1970): barracos de madeira e zinco encostados uns nos outros, de frente para os becos
-        roc_spr = [outlined(barraco70_sprite(i)) for i in range(20)]
-        for k, row in enumerate(ROC_ROWS):
-            if row == ROC_ROWS[-1]:
-                continue                                  # o beco de baixo e so muro pichado
-            blk = []                                      # trechos sem casa: escadas que chegam do norte, largo, bau
-            if k > 0:
-                for sx, sy0, sy1, sw, st in ROC_SEGS[k - 1]:
-                    blk.append((sx - 1.75, sx + sw + 1.75))
-            if row == 50:
-                blk.append((0, 94.4))
-            if row == 80:
-                blk.append((105.2, 200))
-            rr = random.Random(1970 + row)
-            cx = 89.4
-            while cx <= 106.8:
-                if not any(a <= cx <= b for a, b in blk):
-                    put(roc_spr[rr.randrange(len(roc_spr))], int(cx * TS), row * TS, 30, 6, shadow=(0.3, 0.4, 60))
-                cx += 2.2 + rr.uniform(-0.05, 0.2)
-        put(outlined(venda_sprite()), int(89.6 * TS), int(49.6 * TS), 40, 6, shadow=(0.3, 0.4, 60))
-        put(outlined(bica_sprite()), int(91.7 * TS), int(48.2 * TS), 20, 6, shadow=(0.3, 0.4, 60))
-        put(outlined(placa_sprite()), int(87.5 * TS), int(52.2 * TS), 10, 4, shadow=(0.2, 0.3, 60))
+        # ---- morro: casas da favela em terraços ao longo dos becos
+        for row in MORRO_ROWS:
+            for i, hx in enumerate((93, 96.5, 102, 105.5)):
+                if r.random() < 0.12:
+                    continue
+                x, y = int(hx * TS + r.randint(-3, 3)), row * TS
+                put(outlined(barraco_sprite(row * 10 + i)), x, y, 30, 6, shadow=(0.3, 0.4, 60))
+                big_occ.append(pygame.Rect(x - 20, y - 50, 40, 54))
 
         # ---- favelas novas, pixação "FORA DITADURA", varais e pôsteres de revolução
         barr = [outlined(barraco_sprite(900 + i)) for i in range(8)]
@@ -6304,7 +6451,11 @@ class Game(RoomsMixin):
             Walker(Wd[11], [(850, 1150), (730, 1150), (730, 1030), (850, 1030)], 26, 1),
             Walker(Wd[10], lagoa_ring, 10, 0),
             Walker(Wd[8], lagoa_ring[::-1], 10, 6),
-        ] + [Walker(Wd[(3 * i + 1) % len(Wd)], lp, 11 + i % 3 * 2, i) for i, lp in enumerate(ROC_LOOPS)]
+            Walker(Wd[1], [(1440, 260), (1440, 1150)], 12, 0),
+            Walker(Wd[5], [(1592, 260), (1592, 1150)], 11, 0),
+            Walker(Wd[9], [(1440, 520), (1700, 520)], 10, 0),
+            Walker(Wd[7], [(1700, 904), (1440, 904)], 9, 0),
+        ]
         # partículas: pétalas e papéis levados pelo vento
         self.motes = [[r.random() * IW, r.random() * IH, r.uniform(3, 9), r.uniform(0, 6.28), r.randrange(3)]
                       for _ in range(46)]
@@ -6664,7 +6815,7 @@ class Game(RoomsMixin):
             p["shift"] = rnd.randint(3, 9)
             p["guess"] = rnd.choice([g for g in range(26) if g != p["shift"]])
         elif kind == "toques":
-            p.update(seq=[rnd.randrange(4) for _ in range(5)], phase="show", i=0, pad=-1, timer=1.0,
+            p.update(seq=[rnd.randrange(4) for _ in range(5)], phase="show", i=0, pad=-1, timer=self.show_delay(1.0),
                      inp=[], lit={})
         elif kind == "enigma":
             p.update(q=0, sel=0, perm=self.enigma_perms())
@@ -6765,7 +6916,7 @@ class Game(RoomsMixin):
                 p["lit"][i] = 0.25
                 if i != p["seq"][len(p["inp"])]:
                     self.puz_fail("Tom errado! A linha chiou: ouça de novo.")
-                    p.update(phase="show", i=0, pad=-1, timer=1.2, inp=[])
+                    p.update(phase="show", i=0, pad=-1, timer=self.show_delay(1.2), inp=[])
                     return
                 p["inp"].append(i)
                 if len(p["inp"]) == len(p["seq"]):
@@ -6870,14 +7021,7 @@ class Game(RoomsMixin):
                 if sel:
                     pygame.draw.polygon(s, gold, [(x + 38, 222), (x + 62, 222), (x + 50, 208)])
                     pygame.draw.polygon(s, gold, [(x + 38, 372), (x + 62, 372), (x + 50, 386)])
-            if p.get("bau"):
-                clue = self.bau_clue()
-            elif "cida" in self.flags:
-                clue = "Pista de Dona Cida: 'Escrevi atrás da foto o dia em que meu Paulo sumiu: 15 de março.'"
-            else:
-                clue = "Sem pista ainda: Dona Cida guardou a data em que o filho desapareceu. Fale com ela."
-            if p["tries"] >= 3:
-                clue += "  Dica do Prof. Mário: dia e mês, nessa ordem."
+            clue = self.cofre_clue(p)
             y = 410
             for ln in wrap(clue, self.f_ch, 800):
                 self.text(ln, self.f_ch, (150, 230, 210), (cx, y), center=True, shadow=False)
@@ -7692,9 +7836,649 @@ class Game(RoomsMixin):
             return
         txt, t = self.toast
         a = clamp(t / 0.5, 0, 1)
-        tw = self.f_med.size(txt)[0] + 60
-        self.panel((640 - tw // 2, 116, tw, 46), int(228 * a), border=(255, 214, 110))
-        self.text(txt, self.f_med, (255, 244, 220), (640, 139), center=True)
+        ft = self.dlg_tiers[min(1, len(self.dlg_tiers) - 1)][1]
+        lines = wrap(txt, ft, 1000)
+        tw = max(ft.size(ln)[0] for ln in lines) + 60
+        th = len(lines) * ft.lh + 22
+        self.panel((640 - tw // 2, 116, tw, th), int(228 * a), border=(255, 214, 110))
+        for i, ln in enumerate(lines):
+            self.text(ln, ft, (255, 244, 220), (640, 116 + 11 + ft.lh // 2 + i * ft.lh), center=True)
+
+    # ------------------------------------------------------------ fontes e configurações
+    def build_fonts(self):
+        global PIXEL_TEXT
+        PIXEL_TEXT = bool(self.cfg["font_style"])
+        self.f_title = PixFont(50, 3)
+        self.f_big = PixFont(26, 2)
+        self.f_med = PixFont(18, 2)
+        self.f_txt = PixFont(16, 2)
+        self.f_ch = PixFont(15, 2)
+        self.f_sm = PixFont(12, 2)
+        self.f_xs = PixFont(10, 2)
+        sc = FONT_SCALES[self.cfg["font_scale"]]
+        tiers = []
+        for m in (1.0, 0.88, 0.78):
+            tiers.append((PixFont(16, 2, int(round(28 * sc * m))),
+                          PixFont(15, 2, int(round(26 * sc * m))),
+                          PixFont(18, 2, int(round(30 * sc * m)))))
+        self.dlg_tiers = tiers[:1] if PIXEL_TEXT else tiers
+
+    def text_cps(self):
+        return 1e9 if self.cfg["blind"] else TEXT_CPS[self.cfg["text_speed"]]
+
+    def dlg_layout(self, text, choices):
+        """Escolhe o maior tamanho de letra que cabe no diálogo (a caixa pode crescer para cima)."""
+        best = None
+        for ft, fc, fn in self.dlg_tiers:
+            lines = wrap(text, ft, 900)
+            need = 12 + len(lines) * ft.lh
+            ch_lines = []
+            if choices:
+                need += 12
+                for i, c in enumerate(choices):
+                    ls = wrap("%d. %s" % (i + 1, c["text"]), fc, 860)
+                    ch_lines.append(ls)
+                    need += fc.lh * len(ls) + 14
+            best = (ft, fc, fn, lines, ch_lines, need)
+            if need <= 290 + 150:
+                break
+        return best
+
+    def cofre_clue(self, p):
+        if p.get("bau"):
+            clue = self.bau_clue()
+        elif "cida" in self.flags:
+            clue = "Pista de Dona Cida: 'Escrevi atrás da foto o dia em que meu Paulo sumiu: 15 de março.'"
+        else:
+            clue = "Sem pista ainda: Dona Cida guardou a data em que o filho desapareceu. Fale com ela."
+        if p["tries"] >= 3:
+            clue += "  Dica do Prof. Mário: dia e mês, nessa ordem."
+        return clue
+
+    def show_delay(self, base):
+        return base + 2.2 if self.cfg["blind"] else base
+
+    def quit_game(self):
+        try:
+            self.narrator.close()
+        except Exception:
+            pass
+        pygame.quit()
+        sys.exit()
+
+    # ------------------------------------------------------------ menu inicial
+    def title_key(self, k):
+        yes = (pygame.K_RETURN, pygame.K_SPACE, pygame.K_e, pygame.K_KP_ENTER)
+        n = len(TITLE_ITEMS)
+        if k in (pygame.K_UP, pygame.K_w):
+            self.title_i = (self.title_i - 1) % n
+        elif k in (pygame.K_DOWN, pygame.K_s):
+            self.title_i = (self.title_i + 1) % n
+        elif k in yes:
+            self.title_activate(self.title_i)
+        elif k == pygame.K_b:
+            self.toggle_blind()
+        elif k == pygame.K_ESCAPE:
+            self.quit_game()
+
+    def title_activate(self, i):
+        if i == 0:
+            self.start_new_game()
+        elif i == 1:
+            self.open_settings("title")
+        else:
+            self.quit_game()
+
+    def on_mouse_move(self, pos):
+        if self.state == "title":
+            for i, r in enumerate(self.title_rects):
+                if r.collidepoint(pos):
+                    self.title_i = i
+        elif self.state == "settings":
+            for i, r in enumerate(self.set_rects):
+                if r.collidepoint(pos):
+                    self.set_i = i
+
+    def on_mouse_click(self, pos):
+        if self.state == "title":
+            for i, r in enumerate(self.title_rects):
+                if r.collidepoint(pos):
+                    self.title_i = i
+                    self.title_activate(i)
+                    return
+        elif self.state == "settings":
+            rows = self.settings_rows()
+            for i, r in enumerate(self.set_rects):
+                if r.collidepoint(pos) and i < len(rows):
+                    self.set_i = i
+                    row = rows[i]
+                    if row[1] == "opt":
+                        self.settings_change(row, -1 if pos[0] < r.x + r.w // 3 else 1)
+                    else:
+                        self.settings_activate(row)
+                    return
+
+    # ------------------------------------------------------------ configurações
+    def settings_rows(self):
+        if self.set_page == "acess":
+            return [("Modo cego (narração)", "opt", "blind"),
+                    ("Velocidade da voz", "opt", "voice_rate"),
+                    ("Sonar do objetivo (bipes)", "opt", "sonar"),
+                    ("Alto contraste", "opt", "contrast"),
+                    ("Testar a voz", "act", "test_voice"),
+                    ("Voltar", "back", None)]
+        return [("Acessibilidade", "sub", "acess"),
+                ("Tamanho da letra dos diálogos", "opt", "font_scale"),
+                ("Estilo da fonte", "opt", "font_style"),
+                ("Velocidade do texto", "opt", "text_speed"),
+                ("Tela cheia (F11)", "act", "fullscreen"),
+                ("Voltar", "back", None)]
+
+    def row_value(self, row):
+        if row[1] == "opt":
+            return OPT_LABELS[row[2]][self.cfg[row[2]]]
+        return ""
+
+    def row_text(self, row):
+        v = self.row_value(row)
+        return row[0] + (", " + v if v else "")
+
+    def open_settings(self, src):
+        self.settings_from = src
+        self.set_page, self.set_i = "main", 0
+        self.state = "settings"
+
+    def settings_back(self):
+        if self.set_page != "main":
+            self.set_page, self.set_i = "main", 0
+        else:
+            save_cfg(self.cfg)
+            self.state = self.settings_from
+
+    def settings_change(self, row, delta):
+        key = row[2]
+        self.cfg[key] = (self.cfg[key] + delta) % len(OPT_LABELS[key])
+        self.cfg_changed(key)
+
+    def cfg_changed(self, key):
+        if key in ("font_scale", "font_style"):
+            self.build_fonts()
+        elif key == "voice_rate":
+            self.narrator.rate = self.cfg[key]
+        elif key == "blind":
+            if self.cfg["blind"]:
+                self._n_soft = True
+                self.narrator.say("Aperte F1 a qualquer momento para ouvir os comandos. F8 desliga o modo cego.", False)
+            else:
+                self.narrator.say("Modo cego desligado.")
+        save_cfg(self.cfg)
+
+    def settings_activate(self, row):
+        kind, key = row[1], row[2]
+        if kind == "sub":
+            self.set_page, self.set_i = key, 0
+        elif kind == "opt":
+            self.settings_change(row, 1)
+        elif kind == "back":
+            self.settings_back()
+        elif key == "fullscreen":
+            self.toggle_fullscreen()
+        elif key == "test_voice":
+            if self.narrator.available():
+                self.narrator.say("Teste de voz. Se você está ouvindo isto, a narração está funcionando.")
+
+    def settings_key(self, k):
+        yes = (pygame.K_RETURN, pygame.K_SPACE, pygame.K_e, pygame.K_KP_ENTER)
+        rows = self.settings_rows()
+        n = len(rows)
+        self.set_i %= n
+        row = rows[self.set_i]
+        if k == pygame.K_ESCAPE:
+            self.settings_back()
+        elif k in (pygame.K_UP, pygame.K_w):
+            self.set_i = (self.set_i - 1) % n
+        elif k in (pygame.K_DOWN, pygame.K_s):
+            self.set_i = (self.set_i + 1) % n
+        elif k in (pygame.K_LEFT, pygame.K_a):
+            if row[1] == "opt":
+                self.settings_change(row, -1)
+        elif k in (pygame.K_RIGHT, pygame.K_d):
+            if row[1] == "opt":
+                self.settings_change(row, 1)
+        elif k in yes:
+            self.settings_activate(row)
+
+    def draw_settings(self):
+        self.backdrop()
+        self.panel((170, 36, 940, 648), 250)
+        title = "ACESSIBILIDADE" if self.set_page == "acess" else "CONFIGURAÇÕES"
+        self.text(title, self.f_big, (255, 214, 120), (640, 84), center=True)
+        rows = self.settings_rows()
+        self.set_i %= len(rows)
+        self.set_rects = []
+        y = 130
+        f = self.f_med
+        for i, row in enumerate(rows):
+            r = pygame.Rect(210, y, 860, 52)
+            self.set_rects.append(r)
+            sel = i == self.set_i
+            if sel:
+                self.pix_rect((r.x, r.y, r.w, r.h), (24, 12, 40), 4)
+                self.pix_rect((r.x + 4, r.y + 4, r.w - 8, r.h - 8), (255, 214, 120), 4)
+            col = (56, 28, 24) if sel else (255, 240, 214)
+            ty = r.centery - f.lh // 2
+            self.text(row[0], f, col, (r.x + 28, ty), shadow=not sel)
+            if row[1] == "opt":
+                self.text("<  %s  >" % self.row_value(row), f, col, (r.right - 24, ty), right=True, shadow=not sel)
+            elif row[1] == "sub":
+                self.text(">", f, col, (r.right - 24, ty), right=True, shadow=not sel)
+            y += 60
+        box = pygame.Rect(210, 500, 860, 130)
+        self.pix_rect(tuple(box), (24, 12, 40), 4)
+        self.pix_rect((box.x + 4, box.y + 4, box.w - 8, box.h - 8), (28, 16, 48), 4)
+        if self.set_page == "acess":
+            lines = wrap(self.narrator.status() + ".  F8 liga/desliga o modo cego em qualquer tela. "
+                         "F1 lista os comandos.", self.f_sm, 820)
+            for j, ln in enumerate(lines[:4]):
+                self.text(ln, self.f_sm, (190, 240, 255), (box.x + 24, box.y + 16 + j * (self.f_sm.lh + 4)), shadow=False)
+        else:
+            ft = self.dlg_tiers[0][0]
+            lines = wrap("Agente Rosso: Fale baixo. No Rio de 1970, até as paredes têm ouvidos.", ft, 810)
+            for j, ln in enumerate(lines[:3]):
+                self.text(ln, ft, (255, 248, 232), (box.x + 24, box.y + 14 + j * ft.lh))
+        self.text("Cima/Baixo: escolher    Esquerda/Direita: mudar    Enter: selecionar    Esc: voltar",
+                  self.f_xs, (255, 214, 120), (640, 660), center=True, shadow=False)
+
+    # ------------------------------------------------------------ modo cego: comandos
+    def say(self, text, interrupt=True):
+        if self.cfg["blind"]:
+            self.narrator.say(text, interrupt)
+
+    def toggle_blind(self):
+        self.cfg["blind"] ^= 1
+        save_cfg(self.cfg)
+        if self.cfg["blind"]:
+            self._n_state = None
+            self._n_soft = True
+            msg = "Modo cego ligado. Aperte F1 para ouvir os comandos. F8 desliga."
+            if not self.narrator.available():
+                msg += " Mas nenhuma voz foi encontrada neste computador."
+            self.narrator.say(msg)
+        else:
+            self.narrator.say("Modo cego desligado.")
+
+    def nav_target(self):
+        if self.rk or self.state != "play":
+            return None
+        if self.pending_call and self.ring_phone is not None:
+            p = self.phones[self.ring_phone]
+            return p["x"], p["y"], "Orelhão tocando"
+        t = self.step_target()
+        if t:
+            return t
+        if "missao" not in self.flags:
+            best, bd = None, 1e9
+            for p in self.phones:
+                d = math.hypot(p["x"] - self.px, p["y"] - self.py)
+                if d < bd:
+                    best, bd = p, d
+            if best:
+                return best["x"], best["y"], "Orelhão mais próximo"
+            return None
+        best, bd = None, 1e9
+        for n in self.npcs:
+            if self.npc_marker(n):
+                d = math.hypot(n.x - self.px, n.y - self.py)
+                if d < bd:
+                    best, bd = n, d
+        if best:
+            return best.x, best.y, best.name
+        return None
+
+    def guide_text(self):
+        t = self.nav_target()
+        if not t:
+            return "Objetivo: " + self.objective() + "."
+        dx, dy = t[0] - self.px, t[1] - self.py
+        return "%s: %s, %s." % (t[2], dist_text(math.hypot(dx, dy)), dir_text(dx, dy))
+
+    def radar_text(self):
+        if self.state == "play":
+            ox, oy = self.px, self.py
+        elif self.state in ("room", "home"):
+            ox, oy = self.hx, self.hy
+        else:
+            return "O radar funciona andando pela cidade ou dentro de um lugar."
+        items = []
+
+        def add(name, x, y):
+            d = math.hypot(x - ox, y - oy)
+            if d < 220:
+                items.append((d, name, x - ox, y - oy))
+
+        if self.state == "play":
+            for n in self.npcs:
+                add(n.name, n.x, n.y)
+            for i, p in enumerate(self.phones):
+                ring = bool(self.pending_call) and i == self.ring_phone
+                add("orelhão tocando" if ring else "orelhão", p["x"], p["y"])
+            add("porta da sua casa", HOME_DOOR[0], HOME_DOOR[1])
+            for kind, (x, y) in ROOM_DOORS.items():
+                add("porta: " + ROOM_LABEL.get(kind, kind), x, y)
+            st = self.cur_step() if ("missao" in self.flags and not self.pending_call) else None
+            if st and "tile" in st:
+                add("local da missão, " + st["label"], st["tile"][0] * TS + 8, st["tile"][1] * TS + 14)
+        elif self.state == "room" and self.rk:
+            for sid, x, y, rad, lab, txt in self.rooms[self.rk]["spots"]:
+                add(lab, x, y)
+        else:
+            for sid, x, y, rad, lab in HOME_SPOTS:
+                add(lab, x, y)
+        if not items:
+            return "Não há nada por perto."
+        items.sort(key=lambda t: t[0])
+        return "Por perto: " + "; ".join("%s, %s, %s" % (nm, dist_text(d), dir_text(dx, dy))
+                                         for d, nm, dx, dy in items[:6]) + "."
+
+    def status_text(self):
+        left = max(0, int(TIME_LIMIT - self.clock))
+        return ("Prazo restante: %d minutos e %d segundos. Evidências: %d de 100. Suspeita do regime: %d de 100. "
+                "Dinheiro no bolso: %d cruzeiros. Dia %d.") % (left // 60, left % 60, int(self.evid), int(self.susp),
+                                                               int(self.money), self.day)
+
+    def journal_text(self):
+        parts = ["Diário de %s." % self.hero["nome"], "Objetivo: " + self.objective() + ".",
+                 "Evidências: %d de 100. Suspeita do regime: %d de 100. Segredos: %d de 3." %
+                 (int(self.evid), int(self.susp), len(self.secrets)),
+                 "Abusos documentados: " + (", ".join(lab for k, lab in PROBLEMS if k in self.flags) or "nenhum ainda") + "."]
+        if self.route:
+            parts.append("Missões: " + ", ".join(
+                "%s, %s" % (STEP_DEFS[sid]["label"], "feita" if sid in self.done_steps else "pendente")
+                for sid in ROUTES[self.route]["steps"]) + ".")
+        parts.append("Mochila: " + (", ".join(ITEMS[i]["nome"] for i in self.pack) or "vazia") + ".")
+        parts.append(self.status_text().split(". Evidências")[0] + ".")
+        return " ".join(parts)
+
+    def blind_key(self, k):
+        letters = self.state in ("play", "room", "home")
+        nr = self.narrator
+        if k == pygame.K_F1 or (letters and k == pygame.K_h):
+            nr.say(HELP_TEXT)
+        elif k == pygame.K_F2 or (letters and k == pygame.K_o):
+            nr.say("Objetivo: " + self.objective() + ".")
+        elif k == pygame.K_F3 or (letters and k == pygame.K_r):
+            nr.say(self.radar_text())
+        elif k == pygame.K_F4 or (letters and k == pygame.K_g):
+            nr.say(self.guide_text())
+        elif k == pygame.K_F5 or (letters and k == pygame.K_t):
+            nr.say(self.status_text())
+        elif k == pygame.K_F6:
+            self.cfg["sonar"] ^= 1
+            save_cfg(self.cfg)
+            nr.say("Sonar " + OPT_LABELS["sonar"][self.cfg["sonar"]].lower() + ".")
+        elif k == pygame.K_F7 or (letters and k == pygame.K_n):
+            nr.say(nr.last)
+        else:
+            return False
+        return True
+
+    # ------------------------------------------------------------ modo cego: narração automática
+    def _chg(self, slot, sig, text, interrupt=True):
+        if self._n.get(slot) != sig:
+            self._n[slot] = sig
+            if text:
+                self.narrator.say(text, interrupt and not self._n_soft)
+                return True
+        return False
+
+    def _blk(self, x, y, moving, dt):
+        n = self._n
+        pos = (round(x, 2), round(y, 2))
+        if moving and n.get("pos") == pos:
+            n["blk"] = n.get("blk", 0.0) + dt
+        else:
+            n["blk"] = 0.0
+        n["pos"] = pos
+        n["cd"] = max(0.0, n.get("cd", 0.0) - dt)
+        if n["blk"] > 0.2 and n["cd"] <= 0:
+            self.beeper.beep(150, 0.12, vol=0.7)
+            n["cd"] = 1.2
+
+    def narr_update(self, dt):
+        if not self.cfg["blind"]:
+            self._n_state = None
+            return
+        st = self.state
+        if st != self._n_state:
+            self._n_state = st
+            self._n = {}
+        tt = self.toast[0] if self.toast else None
+        if tt != self._n_toast:
+            self._n_toast = tt
+            if tt:
+                self.narrator.say(tt, False)
+        fn = getattr(self, "narr_" + st, None)
+        if fn:
+            fn(dt)
+        self._n_soft = False
+
+    def narr_title(self, dt):
+        first = "t" not in self._n
+        pre = "Agente Rosso, Operação Verdade. Menu principal. Use cima e baixo e Enter. F1 ajuda. " if first else ""
+        self._chg("t", self.title_i, pre + TITLE_ITEMS[self.title_i])
+
+    def narr_settings(self, dt):
+        rows = self.settings_rows()
+        i = self.set_i % len(rows)
+        row = rows[i]
+        txt = self.row_text(row)
+        if self._n.get("p") != self.set_page:
+            self._n["p"] = self.set_page
+            self._n["s"] = None
+            head = "Acessibilidade." if self.set_page == "acess" else "Configurações."
+            txt = head + " Esquerda e direita mudam o valor. Escape volta. " + txt
+        self._chg("s", (self.set_page, i, self.row_value(row)), txt)
+
+    def narr_intro(self, dt):
+        txt = " ".join(ln for ln in INTRO_LINES if ln and ln != "[Enter]") + " Aperte Enter para começar."
+        self._chg("i", 1, txt)
+
+    def near_target_desc(self):
+        if self.pending_call:
+            ph = self.near_phone()
+            if ph:
+                return "Orelhão tocando. Pressione E para atender."
+        mst = self.cur_step() if ("missao" in self.flags and not self.pending_call) else None
+        if mst and "tile" in mst and self.near_tile(mst["tile"]):
+            return "%s. Pressione E." % mst["label"]
+        n, ph = self.near_npc(), self.near_phone()
+        if n:
+            msg = self.gate_msg(n)
+            txt = "%s. %s" % (n.name, msg if msg else "Pressione E para falar.")
+            tg = self.bribe_target()
+            if tg:
+                txt += " Tecla P para subornar por %d cruzeiros." % BRIBE_COST
+            return txt
+        if ph:
+            return "Orelhão. Pressione E para ligar."
+        if self.near_home_door():
+            return "Porta da sua casa. Pressione E para entrar."
+        rk = self.near_room_door()
+        if rk:
+            return "Porta: %s. Pressione E para entrar." % ROOM_LABEL.get(rk, rk)
+        if self.secret_near():
+            return "Há algo suspeito aqui. Pressione E para investigar."
+        return None
+
+    def narr_play(self, dt):
+        if self.clock < 2.0:
+            self._chg("hi", 1, "Jogo iniciado. Objetivo: " + self.objective() + ". Aperte F1 para ouvir os comandos e F4 "
+                      "para saber a direção do objetivo.")
+        d = district(self.px, self.py)
+        if d != self._ndist:
+            self._ndist = d
+            self.narrator.say("Você está em: " + d + ".", False)
+        near = self.near_target_desc()
+        self._chg("near", near, near)
+        self._chg("ring", bool(self.pending_call),
+                  "O orelhão está tocando. Aperte F4 para ouvir a direção." if self.pending_call else None)
+        self._blk(self.px, self.py, self.moving, dt)
+        if self.cfg["sonar"]:
+            t = self.nav_target()
+            if t:
+                dx, dy = t[0] - self.px, t[1] - self.py
+                dist = math.hypot(dx, dy)
+                self._n["sn"] = self._n.get("sn", 0.0) - dt
+                if self._n["sn"] <= 0:
+                    close = dist < 24
+                    freq = int(clamp(660 - dy * 2.5, 330, 1100) / 20) * 20
+                    self.beeper.beep(freq, 0.2 if close else 0.07, pan=clamp(dx / 90.0, -1, 1))
+                    self._n["sn"] = 0.25 if close else clamp(dist / 160.0, 0.3, 1.6)
+
+    def narr_dialogue(self, dt):
+        dl = self.dl
+        if not dl:
+            return
+        sig = (id(dl["node"]), dl["text"])
+        if self._n.get("dn") != sig:
+            self._n["dn"] = sig
+            txt = "%s. %s" % (dl["speaker"], dl["text"])
+            if dl["choices"]:
+                txt += " Opções: " + " ".join("%d. %s." % (i + 1, c["text"]) for i, c in enumerate(dl["choices"]))
+                txt += " Use cima e baixo e Enter."
+            self.narrator.say(txt, not self._n_soft)
+            self._n["di"] = dl["idx"]
+        elif dl["choices"] and self._n.get("di") != dl["idx"]:
+            self._n["di"] = dl["idx"]
+            self.narrator.say("Opção %d: %s" % (dl["idx"] + 1, dl["choices"][dl["idx"]]["text"]))
+
+    def narr_journal(self, dt):
+        self._chg("j", 1, self.journal_text())
+
+    def narr_pause(self, dt):
+        self._chg("p", 1, "Pausa. Escape continua. Q volta ao menu. C abre as configurações.")
+
+    def narr_ending(self, dt):
+        e = self.ending
+        self._chg("e", 1, "Fim da operação. %s Evidências: %d. Suspeita do regime: %d. Aperte Enter para voltar ao menu." %
+                  (e["text"], int(self.evid), int(self.susp)))
+
+    def narr_room(self, dt):
+        spec = self.rooms[self.rk]
+        self._chg("r", self.rk, "Você entrou: %s. F3 descreve o que há por perto." % spec["title"])
+        sp = self.room_spot()
+        self._chg("sp", sp[0] if sp else None, ("%s. Pressione E." % sp[3]) if sp else None)
+        self._blk(self.hx, self.hy, self.hmoving, dt)
+
+    def narr_home(self, dt):
+        self._chg("h", 1, "Você está em casa. F3 descreve o que há por perto.")
+        names = dict(porta="Porta de saída", mural="Mural de provas: guardar itens e dinheiro",
+                     cama="Cama: dormir passa o dia")
+        sp = self.home_spot()
+        self._chg("sp", sp[0] if sp else None, ("%s. Pressione E." % names.get(sp[0], sp[3])) if sp else None)
+        self._blk(self.hx, self.hy, self.hmoving, dt)
+
+    def narr_entrega(self, dt):
+        rows = self.entrega_rows()
+        i = self.ent["idx"] % len(rows)
+        r = rows[i]
+        if r["kind"] == "dica":
+            tag = ""
+        elif r["done"]:
+            tag = "Guardado"
+        elif r["ok"]:
+            tag = "Entregar"
+        else:
+            tag = "Ainda não tem"
+        first = "m" not in self._n
+        pre = "Entregar ao informante. Cima e baixo escolhem, Enter entrega, Escape volta. " if first else ""
+        if self._chg("m", self.ent["msg"], pre + self.ent["msg"]):
+            self._chg("i", i, "%s. %s" % (r["label"], tag), False)
+        else:
+            self._chg("i", i, "%s. %s" % (r["label"], tag))
+
+    def narr_stash(self, dt):
+        su = self.su
+        rows = self.stash_rows(su["col"])
+        row = su["row"] % len(rows)
+        key = rows[row]
+        where = "Mochila" if su["col"] == 0 else "Mural"
+        if key == "$":
+            what = "Dinheiro, %d cruzeiros" % (self.money if su["col"] == 0 else self.bank)
+        else:
+            what = ITEMS[key]["nome"]
+        first = "m" not in self._n
+        pre = "Mural de provas. Esquerda e direita trocam entre mochila e mural. Enter move o item. " if first else ""
+        if self._chg("m", su.get("msg", ""), (pre + su.get("msg", "")) if su.get("msg") else None):
+            self._chg("i", (su["col"], row, what), "%s: %s" % (where, what), False)
+        else:
+            self._chg("i", (su["col"], row, what), (pre if first else "") + "%s: %s" % (where, what))
+
+    def narr_confirm(self, dt):
+        c = self.cfm
+        if not c:
+            return
+        self._chg("t", 1, c["text"] + " Sim ou não? Cima e baixo escolhem, Enter confirma. Tecla 1 para sim, 2 para não.")
+        self._chg("i", c["idx"], ("Sim" if c["idx"] == 0 else "Não") if "t" in self._n and self._n.get("i") is not None else None)
+        if self._n.get("i") is None:
+            self._n["i"] = c["idx"]
+
+    def narr_sleep(self, dt):
+        sf = self.sleepfx
+        if sf and sf.get("head") and sf["t"] >= 1.4:
+            self._chg("h", sf["head"], "Dia %d. %s" % (self.day, sf["head"]))
+
+    def narr_puzzle(self, dt):
+        p = self.puz
+        if not p:
+            return
+        kind = p["kind"]
+        first = "k" not in self._n
+        self._n["k"] = 1
+        if kind == "cifra":
+            enc = caesar(CIFRA_TEXT, p["shift"])
+            dec = caesar(enc, -p["guess"])
+            intro = ("Bilhete cifrado. Cada letra foi trocada por outra, sempre com o mesmo deslocamento. "
+                     "Gire o disco com esquerda e direita e confirme com Enter. Bilhete interceptado: %s. " % enc) if first else ""
+            self._chg("g", p["guess"], "%sDisco em %d. Texto lido: %s" % (intro, p["guess"], dec))
+        elif kind == "enigma":
+            q_, shown, _ok = self.enigma_cur(p)
+            intro = "Enigma do muro. Acerte as três perguntas seguidas. " if first else ""
+            opts = " ".join("%d. %s." % (i + 1, o) for i, o in enumerate(shown))
+            if self._chg("q", (p["q"], tuple(shown)), "%sPergunta %d de %d. %s Opções: %s Use 1 a 4 ou cima e baixo e Enter." %
+                         (intro, p["q"] + 1, len(ENIGMAS), q_, opts)):
+                self._n["o"] = p["sel"]
+            elif self._n.get("o") != p["sel"]:
+                self._n["o"] = p["sel"]
+                self.narrator.say("Opção %d: %s" % (p["sel"] + 1, shown[p["sel"]]))
+        elif kind == "toques":
+            ph = p["phase"]
+            self._chg("ph", ph, "Código de toques. Ouça a sequência de tons." if ph == "show"
+                      else "Sua vez. Repita com as teclas 1, 2, 3 e 4.")
+            pad = p["pad"]
+            if pad != self._n.get("pad"):
+                self._n["pad"] = pad
+                if pad >= 0:
+                    self.beeper.beep(TONE_FREQS[pad], 0.35, pan=(pad - 1.5) / 2.0, vol=0.8)
+            seen = self._n.get("lit", set())
+            for i in p["lit"]:
+                if i not in seen:
+                    self.beeper.beep(TONE_FREQS[i], 0.3, pan=(i - 1.5) / 2.0, vol=0.8)
+            self._n["lit"] = set(p["lit"])
+        else:
+            dig = tuple(p["dig"])
+            intro = ""
+            if first:
+                intro = "%s. %s %s " % (p.get("title", "COFRE DA SACRISTIA").capitalize(),
+                                        p.get("sub", "Quatro rodas numeradas. A senha é uma data: dia e mês."),
+                                        self.cofre_clue(p))
+                intro += "Esquerda e direita trocam de roda, cima e baixo mudam o número, Enter abre. "
+            self._chg("c", (p["cur"], dig), "%sRoda %d de 4, valor %d. Senha atual: %s." %
+                      (intro, p["cur"] + 1, dig[p["cur"]], " ".join(str(d) for d in dig)))
+        prev = self._n.get("pmt", 0.0)
+        if p["msg"] and p["msg_t"] > prev + 0.1:
+            self.narrator.say(p["msg"], False)
+        self._n["pmt"] = p["msg_t"]
 
     # ------------------------------------------------------------- loop
     def run(self):
@@ -7705,9 +8489,10 @@ class Game(RoomsMixin):
                 if e.type == pygame.QUIT:
                     pygame.quit()
                     sys.exit()
-                if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1 and self.state == "title":
-                    if self.title_btn.collidepoint(e.pos):
-                        self.start_new_game()
+                if e.type == pygame.MOUSEMOTION:
+                    self.on_mouse_move(e.pos)
+                if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
+                    self.on_mouse_click(e.pos)
                 if e.type == pygame.KEYDOWN:
                     if e.key == pygame.K_F11:
                         self.toggle_fullscreen()
@@ -7730,12 +8515,15 @@ class Game(RoomsMixin):
         up = (pygame.K_UP, pygame.K_w)
         dn = (pygame.K_DOWN, pygame.K_s)
         st = self.state
+        if k == pygame.K_F8:
+            self.toggle_blind()
+            return
+        if self.cfg["blind"] and self.blind_key(k):
+            return
         if st == "title":
-            if k in yes:
-                self.start_new_game()
-            elif k == pygame.K_ESCAPE:
-                pygame.quit()
-                sys.exit()
+            self.title_key(k)
+        elif st == "settings":
+            self.settings_key(k)
         elif st == "intro":
             if k in yes or k == pygame.K_ESCAPE:
                 self.state = "play"
@@ -7775,6 +8563,8 @@ class Game(RoomsMixin):
                 self.state = self.pause_from
             elif k == pygame.K_q:
                 self.state = "title"
+            elif k == pygame.K_c:
+                self.open_settings("pause")
         elif st == "dialogue":
             dl = self.dl
             if dl["choices"] and dl["shown"] >= len(dl["text"]):
@@ -7866,7 +8656,7 @@ class Game(RoomsMixin):
             self.sleep_update(dt)
         elif self.state == "dialogue":
             dl = self.dl
-            dl["shown"] = min(float(len(dl["text"])), dl["shown"] + dt * 60)
+            dl["shown"] = min(float(len(dl["text"])), dl["shown"] + dt * self.text_cps())
         elif self.state == "ending":
             self.ending["t"] += dt
         elif self.state == "intro":
@@ -7883,6 +8673,7 @@ class Game(RoomsMixin):
             self.cam[1] += (ty - self.cam[1]) * 0.14
         self.cam[0] = clamp(self.cam[0], 0, MW * TS - IW)
         self.cam[1] = clamp(self.cam[1], 0, MH * TS - IH)
+        self.narr_update(dt)
 
     # ------------------------------------------------------------ render
     def glow_surf(self, col, rad, k):
@@ -8053,6 +8844,9 @@ class Game(RoomsMixin):
         if shadow:
             sh = font.render(s, True, (24, 12, 40))
             off = font.k if PIXEL_TEXT else 2
+            if not PIXEL_TEXT:
+                for ox_, oy_ in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                    self.screen.blit(sh, (r.x + ox_, r.y + oy_))
             self.screen.blit(sh, (r.x + off, r.y + off))
         self.screen.blit(img, r)
         return r
@@ -8076,6 +8870,8 @@ class Game(RoomsMixin):
     def panel(self, rect, alpha=235, border=(255, 222, 150), fill=(48, 28, 82), outline=(20, 10, 34)):
         x, y, w, h = rect
         u = 4
+        if self.cfg["contrast"] and fill == (48, 28, 82):
+            fill, border, alpha = (6, 6, 12), (255, 255, 255), 255
         s = pygame.Surface((w, h), pygame.SRCALPHA)
 
         def notched(col, ins):
@@ -8273,11 +9069,16 @@ class Game(RoomsMixin):
     def draw_dialogue(self):
         dl = self.dl
         s = self.screen
-        self.panel((40, 388, 1200, 326), 238)
+        hc = self.cfg["contrast"]
+        ft, fc, fn, lines, ch_lines, need = self.dlg_layout(dl["text"], dl["choices"])
+        h = min(max(326, need + 56), 560)
+        top = 714 - h
+        self.panel((40, top, 1200, h), 255 if hc else 244)
         name = dl["speaker"]
-        tw = self.f_med.size(name)[0] + 60
-        self.panel((90, 360, tw, 54), 255, border=(255, 246, 200), fill=(246, 186, 76))
-        self.text(name, self.f_med, (62, 30, 24), (90 + 30, 376), shadow=False)
+        tw = fn.size(name)[0] + 60
+        th = max(54, fn.lh + 16)
+        self.panel((90, top - 28, tw, th), 255, border=(255, 246, 200), fill=(246, 186, 76))
+        self.text(name, fn, (62, 30, 24), (120, top - 28 + (th - fn.lh) // 2), shadow=False)
         # retrato
         self.panel((78, 432, 184, 262), 255, border=(150, 230, 210), fill=(92, 62, 128))
         pygame.draw.rect(s, (60, 36, 96), (98, 452, 144, 222))
@@ -8286,28 +9087,33 @@ class Game(RoomsMixin):
         sprite = dl["npc"].frames["down"][0]
         sc = 5 if sprite.get_height() > 30 else 6
         self.draw_sprite_big(sprite, (170 - sprite.get_width() * sc // 2, 668 - sprite.get_height() * sc), sc)
-        txt = dl["text"][:int(dl["shown"])]
-        lines = wrap(txt, self.f_txt, 880)
-        y = 416
+        # texto (a quebra de linhas usa o texto inteiro, então as palavras não "pulam" enquanto aparece)
+        txt_col = (255, 255, 255) if hc else (255, 248, 232)
+        left = int(dl["shown"])
+        y = top + 28
         for ln in lines:
-            self.text(ln, self.f_txt, (255, 248, 232), (296, y))
-            y += 30
+            if left <= 0:
+                break
+            self.text(ln[:left], ft, txt_col, (296, y))
+            left -= len(ln) + 1
+            y += ft.lh
         full = dl["shown"] >= len(dl["text"])
         if dl["choices"] and full:
-            y += 12
-            for i, c in enumerate(dl["choices"]):
+            y = top + 28 + len(lines) * ft.lh + 12
+            for i, ls in enumerate(ch_lines):
                 sel = i == dl["idx"]
-                ls = wrap("%d. %s" % (i + 1, c["text"]), self.f_ch, 850)
-                hh = 28 * len(ls) + 8
+                hh = fc.lh * len(ls) + 10
                 if sel:
                     self.pix_rect((290, y - 3, 930, hh), (24, 12, 40), 4)
                     self.pix_rect((294, y, 922, hh - 6), (255, 214, 120), 4)
                     ay = y + hh // 2 - 3
                     pygame.draw.polygon(s, (24, 12, 40), [(300, ay - 8), (300, ay + 8), (314, ay)])
+                yy = y + 3
                 for ln in ls:
-                    self.text(ln, self.f_ch, (56, 28, 24) if sel else (255, 232, 190), (322, y + 3), shadow=not sel)
-                    y += 28
-                y += 10
+                    col = (56, 28, 24) if sel else ((255, 255, 160) if hc else (255, 232, 190))
+                    self.text(ln, fc, col, (322, yy), shadow=not sel)
+                    yy += fc.lh
+                y += hh + 4
         elif full:
             by = 676 + int(abs(math.sin(self.t * 5)) * 4)
             pygame.draw.polygon(s, (255, 214, 120), [(1196, by), (1214, by), (1205, by + 10)])
@@ -8328,47 +9134,53 @@ class Game(RoomsMixin):
         self.screen.blit(self._bd, (0, 0))
 
     def draw_title(self):
-        """Menu: só a cena de Copacabana e o botão Iniciar abaixo do centro (sem título por enquanto)."""
+        """Menu: cena de Copacabana e os botões Iniciar, Configurações e Sair."""
         s = self.screen
-        r = self.title_btn
         pulse = 0.5 + 0.5 * math.sin(self.t * 3.0)
-        mx, my = pygame.mouse.get_pos()
-        hover = r.collidepoint(mx, my)
-        # halo pulsante atrás do botão
-        halo = pygame.Surface((r.w + 60, r.h + 60), pygame.SRCALPHA)
-        for i in range(5):
-            a = int((26 + 30 * pulse) * (1 - i / 5.0))
-            pygame.draw.rect(halo, (255, 200, 110, a), (i * 5, i * 5, halo.get_width() - i * 10, halo.get_height() - i * 10),
-                             border_radius=18)
-        s.blit(halo, (r.x - 30, r.y - 30))
-        grow = 6 if hover else 0
-        rr = r.inflate(grow * 2, grow)
-        self.panel(tuple(rr), 255, border=(255, 246, 200), fill=(246, 186, 76))
-        ay = rr.centery
-        ax = rr.x + 44 + int(pulse * 5)
-        pygame.draw.polygon(s, (24, 12, 40), [(ax, ay - 14), (ax, ay + 14), (ax + 22, ay)])
-        self.text("Iniciar", self.f_big, (62, 30, 24), rr.center, center=True, shadow=False)
+        for i, r in enumerate(self.title_rects):
+            sel = i == self.title_i
+            if sel:
+                halo = pygame.Surface((r.w + 60, r.h + 60), pygame.SRCALPHA)
+                for j in range(5):
+                    a = int((26 + 30 * pulse) * (1 - j / 5.0))
+                    pygame.draw.rect(halo, (255, 200, 110, a), (j * 5, j * 5, halo.get_width() - j * 10,
+                                                                halo.get_height() - j * 10), border_radius=18)
+                s.blit(halo, (r.x - 30, r.y - 30))
+            rr = r.inflate(12, 6) if sel else r
+            self.panel(tuple(rr), 255, border=(255, 246, 200) if sel else (190, 160, 120),
+                       fill=(246, 186, 76) if sel else (70, 44, 110))
+            if sel:
+                ay = rr.centery
+                ax = rr.x + 30 + int(pulse * 5)
+                pygame.draw.polygon(s, (24, 12, 40), [(ax, ay - 14), (ax, ay + 14), (ax + 22, ay)])
+            self.text(TITLE_ITEMS[i], self.f_big, (62, 30, 24) if sel else (255, 238, 200), rr.center,
+                      center=True, shadow=not sel)
+        self.text("Setas ou mouse: escolher    Enter: confirmar    F8: modo cego", self.f_xs, (255, 255, 255),
+                  (640, 696), center=True)
 
     def draw_intro(self):
-        s = self.screen
         self.backdrop()
         a = clamp(self.intro_t / 1.5, 0, 1)
-        self.panel((110, 56, 1060, 610), 235)
-        lines = ["OPERAÇÃO VERDADE", "Brasil, 1970 - Anos de Chumbo", "",
-                 "Há seis anos o país vive sob uma ditadura militar.",
-                 "O Congresso está fechado, a imprensa é censurada e quem discorda some.",
-                 "Você é o Agente Rosso, um porco espião de uma rede clandestina.",
-                 "Ligue para a Central e procure o Professor Mário, da rede.",
-                 "Escolha uma linha (Igreja, Rádio ou Imprensa): depois não há volta. Casa = porta rosa.",
-                 "Reúna testemunhas e entregue o dossiê a Helen Harper.",
-                 "15 min de prazo. Shift = correr. Itens perto da polícia dão suspeita. Há segredos!",
-                 "", "[Enter]"]
-        y = 100
-        for i, ln in enumerate(lines):
-            col = (255, 214, 120) if i < 2 else (244, 240, 250)
-            c = tuple(int(v * a) for v in col)
-            self.text(ln, self.f_big if i == 0 else self.f_med, c, (640, y), center=True, shadow=False)
-            y += 70 if i == 0 else 48
+        self.panel((90, 40, 1100, 640), 245)
+        body = INTRO_LINES[2:]
+        for f in (self.f_med, self.f_txt, self.f_ch, self.f_sm):
+            items = []
+            for ln in body:
+                items.extend(wrap(ln, f, 1000) if ln else [""])
+            if len(items) * (f.lh + 8) <= 440:
+                break
+        col = lambda c: tuple(int(v * a) for v in c)
+        self.text(INTRO_LINES[0], self.f_big, col((255, 214, 120)), (640, 96), center=True, shadow=False)
+        self.text(INTRO_LINES[1], self.f_med, col((255, 214, 120)), (640, 146), center=True, shadow=False)
+        y = 196
+        for ln in items:
+            if ln == "[Enter]":
+                ln = "Aperte Enter para começar"
+                c = col((255, 214, 120))
+            else:
+                c = col((244, 240, 250))
+            self.text(ln, f, c, (640, y + f.lh // 2), center=True, shadow=False)
+            y += f.lh + 8
 
     def draw_journal(self):
         self.panel((150, 76, 980, 570), 245)
@@ -8431,14 +9243,18 @@ class Game(RoomsMixin):
             self.text("[Enter] voltar ao menu", self.f_sm, (255, 214, 120), (1140, 662), right=True, shadow=False)
 
     def draw_pause(self):
-        self.panel((400, 230, 480, 240), 240)
-        self.text("PAUSA", self.f_big, (255, 244, 220), (640, 290), center=True)
-        self.text("Esc / Enter: continuar", self.f_txt, (240, 236, 250), (640, 364), center=True)
-        self.text("Q: voltar ao menu", self.f_txt, (240, 236, 250), (640, 404), center=True)
+        self.panel((400, 210, 480, 290), 240)
+        self.text("PAUSA", self.f_big, (255, 244, 220), (640, 270), center=True)
+        self.text("Esc / Enter: continuar", self.f_txt, (240, 236, 250), (640, 344), center=True)
+        self.text("C: configurações", self.f_txt, (240, 236, 250), (640, 384), center=True)
+        self.text("Q: voltar ao menu", self.f_txt, (240, 236, 250), (640, 424), center=True)
 
     # -------------------------------------------------------------- draw
     def draw(self):
         st = self.state
+        if st == "settings":
+            self.draw_settings()
+            return
         if st in ("intro", "ending"):
             if st == "intro":
                 self.draw_intro()
