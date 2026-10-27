@@ -200,11 +200,84 @@ PALS = [  # chão A, chão B, parede A, parede B, fundo, bandeira
 ]
 
 
+def _liquid_cell(s, rng, x, y, liq, kind, axis, stone):
+    """Uma célula de rio no cenário em cache: água (um degrau abaixo do piso), vau raso com pedras ou ponte."""
+    deep, light = liq["deep"], liq["light"]
+    if kind == "water":
+        draw_box(s, x, y, -0.6, 1, 1, 0.30, mix(deep, 0.10 + 0.16 * rng.random(), light), outline=False)
+    elif kind == "ford":
+        draw_box(s, x, y, -0.6, 1, 1, 0.48, mix(deep, 0.45 + 0.10 * rng.random(), light), outline=False)
+        for _ in range(3):
+            draw_box(s, x + rng.uniform(0.08, 0.62), y + rng.uniform(0.08, 0.62), -0.14,
+                     rng.uniform(0.2, 0.3), rng.uniform(0.18, 0.28), 0.16, shade(stone, rng.uniform(0.6, 0.9)),
+                     g=0.1, tex=0.05)
+    else:   # ponte (só vigas baixas: o herói nunca fica "atrás" de uma peça desenhada no cenário)
+        draw_box(s, x, y, -0.6, 1, 1, 0.30, mix(deep, 0.10, light), outline=False)
+        plank, beam = liq["ponte"]
+        if axis == "y":      # rio corre ao longo de y: atravessa-se ao longo de x
+            draw_box(s, x, y, -0.12, 1.0, 0.07, 0.2, beam)
+            for k in range(5):
+                draw_box(s, x + 0.02 + 0.2 * k, y + 0.04, -0.12, 0.17, 0.92, 0.12, shade(plank, 0.9 + 0.1 * (k % 2)))
+            draw_box(s, x, y + 0.93, -0.12, 1.0, 0.07, 0.2, beam)
+        else:
+            draw_box(s, x, y, -0.12, 0.07, 1.0, 0.2, beam)
+            for k in range(5):
+                draw_box(s, x + 0.04, y + 0.02 + 0.2 * k, -0.12, 0.92, 0.17, 0.12, shade(plank, 0.9 + 0.1 * (k % 2)))
+            draw_box(s, x + 0.93, y, -0.12, 0.07, 1.0, 0.2, beam)
+
+
+def _cave_extras(s, rng, lay, pal, wet):
+    """Detalhes de caverna nas paredes (tudo com no máx. 0.24 de profundidade, o herói nunca encosta)."""
+    fa, fb, wa, wb, _, acc = pal
+
+    def touch(ax, v, la):
+        for j in range(max(0, int(v)), min(N - 1, int(v + la)) + 1):
+            if ((0, j) if ax == "x" else (j, 0)) in wet:
+                return True
+        return False
+
+    for ax in ("x", "y"):
+        for _ in range(rng.randint(3, 5)):           # pedras salientes na base
+            v, la = rng.uniform(0.2, N - 1.4), rng.uniform(0.5, 1.1)
+            if touch(ax, v, la):
+                continue
+            hh = rng.uniform(0.3, 0.75)
+            wbox(s, ax, v, 0, la, 0.0, hh, 0.22, shade(wa, rng.uniform(0.95, 1.3)), g=0.2, tex=0.08)
+            wbox(s, ax, v, 0.1 * la, la * 0.6, hh, hh * 0.4, 0.14, shade(wa, rng.uniform(1.15, 1.4)), g=0.15, tex=0.06)
+        for _ in range(rng.randint(5, 8)):           # estalactites penduradas no topo
+            v = rng.uniform(0.2, N - 0.6)
+            top = WALL_H - 0.02
+            c = shade(wb, rng.uniform(1.0, 1.35))
+            wbox(s, ax, v, 0, 0.30, top - 0.32, 0.32, 0.22, c, g=0.12, tex=0.06)
+            wbox(s, ax, v, 0.06, 0.18, top - 0.62, 0.30, 0.14, shade(c, 1.08), g=0.1)
+            wbox(s, ax, v, 0.11, 0.08, top - 0.90, 0.28, 0.08, shade(c, 1.16))
+    if lay.get("tunnel"):                              # boca de túnel escura com moldura de rocha
+        ax, v = lay["tunnel"]
+        stone = shade(wa, 1.1)
+        wbox(s, ax, v, 0.0, 2.0, 0.0, 2.0, 0.06, (6, 6, 12), outline=False)
+        wbox(s, ax, v, -0.3, 0.3, 0.0, 2.35, 0.22, stone, g=0.2, tex=0.08)
+        wbox(s, ax, v, 2.0, 0.3, 0.0, 2.35, 0.22, stone, g=0.2, tex=0.08)
+        wbox(s, ax, v, -0.3, 2.6, 2.0, 0.35, 0.22, shade(stone, 1.1), g=0.2, tex=0.08)
+    for (ax, v, zc, col) in lay.get("wall_crystals", ()):   # cristais brilhantes na parede
+        wbox(s, ax, v, 0.0, 0.5, zc - 0.12, 0.22, 0.2, shade(wa, 1.25), g=0.12, tex=0.06)
+        wbox(s, ax, v, 0.04, 0.12, zc + 0.10, 0.5, 0.16, col)
+        wbox(s, ax, v, 0.06, 0.10, zc + 0.60, 0.14, 0.12, mix(col, 0.4))
+        wbox(s, ax, v, 0.26, 0.12, zc + 0.10, 0.34, 0.16, shade(col, 0.8))
+        wbox(s, ax, v, 0.28, 0.10, zc + 0.44, 0.12, 0.12, mix(col, 0.4))
+
+
 def build_room(pal, duplo, seed, lay=None):
     fa, fb, wa, wb, _, ban = pal
     rng = random.Random(seed)
     s = pygame.Surface((W, H), pygame.SRCALPHA)
     rock = shade(fb, 0.46)
+    cave = bool(lay and lay.get("cave"))
+    water = set(lay.get("water", ())) if lay else set()
+    bridges = set(lay.get("bridges", ())) if lay else set()
+    fords = set(lay.get("fords", ())) if lay else set()
+    wet = water | bridges | fords
+    liq = LIQUIDS[lay["liquid"]] if (lay and wet) else None
+    r_axis = lay.get("river_axis", "y") if lay else "y"
 
     # ilha flutuante: camadas de rocha irregular sob o piso
     for layer, (z0, lo, hi, keep) in enumerate(((-1.25, -1, N, 0.80), (-1.9, 1, N - 1, 0.72), (-2.5, 2, N - 2, 0.65))):
@@ -228,7 +301,17 @@ def build_room(pal, duplo, seed, lay=None):
                     c = shade(c, 0.84)
                 elif x == 1 or y == 1:
                     c = shade(c, 0.93)
-            draw_box(s, x, y, -0.6, 1, 1, 0.55, c, g=0.2, tex=0.05, bevel=True)
+            if cave and x >= 0 and y >= 0:       # caverna: chão de terra/rocha irregular
+                c = shade(fa if rng.random() < 0.55 else fb, rng.uniform(0.80, 1.10))
+                if x == 0 or y == 0:
+                    c = shade(c, 0.80)
+                elif x == 1 or y == 1:
+                    c = shade(c, 0.90)
+            if (x, y) in wet:
+                kd_ = "water" if (x, y) in water else ("ford" if (x, y) in fords else "bridge")
+                _liquid_cell(s, rng, x, y, liq, kd_, r_axis, fa)
+                continue
+            draw_box(s, x, y, -0.6, 1, 1, 0.55, c, g=0.2, tex=0.09 if cave else 0.05, bevel=not cave)
             if x >= 0 and y >= 0 and rng.random() < 0.13:
                 px_, py_ = rng.uniform(0.2, 0.8), rng.uniform(0.2, 0.8)
                 for _ in range(3):
@@ -240,7 +323,18 @@ def build_room(pal, duplo, seed, lay=None):
     # paredes: pedra com variação, base musgosa, cornija no topo e rodapé
     for x in range(-1, N):
         for y in range(-1, N):
-            if x < 0 or y < 0:
+            if (x < 0 or y < 0) and cave:        # paredes de rocha bruta, com topo irregular
+                for z in range(WALL_H):
+                    c = shade(wa if rng.random() < 0.5 else wb, rng.uniform(0.80, 1.15))
+                    if z == 0:
+                        c = shade(c, 0.85)
+                        if rng.random() < 0.3:
+                            c = mix(c, 0.3, (58, 112, 74))
+                    draw_box(s, x, y, z, 1, 1, 1, c, g=0.25, tex=0.09, ao=(z == 0))
+                if rng.random() < 0.55:
+                    draw_box(s, x, y, WALL_H, 1, 1, rng.choice((0.35, 0.5, 0.75)), shade(wa, rng.uniform(0.95, 1.2)),
+                             g=0.25, tex=0.09)
+            elif x < 0 or y < 0:
                 for z in range(WALL_H):
                     c = shade(wa if (x + y + z) % 2 == 0 else wb, rng.uniform(0.94, 1.06))
                     if z == 0:
@@ -249,11 +343,13 @@ def build_room(pal, duplo, seed, lay=None):
                             c = mix(c, 0.3, (58, 112, 58))
                     draw_box(s, x, y, z, 1, 1, 1, c, g=0.2, tex=0.05, ao=(z == 0))
                 draw_box(s, x, y, WALL_H, 1, 1, 0.14, mix(wa, 0.14), g=0.25, tex=0.04, bevel=True)
-    for i in range(N):
+    for i in range(0 if cave else N):
         zx = ground(0.1, i + 0.5, duplo)
         zy = ground(i + 0.5, 0.1, duplo)
-        draw_box(s, 0, i, zx, 0.16, 1, 0.2, shade(wa, 0.72), g=0.1, tex=0.04, bevel=True)
-        draw_box(s, i, 0, zy, 1, 0.16, 0.2, shade(wa, 0.72), g=0.1, tex=0.04, bevel=True)
+        if (0, i) not in wet:
+            draw_box(s, 0, i, zx, 0.16, 1, 0.2, shade(wa, 0.72), g=0.1, tex=0.04, bevel=True)
+        if (i, 0) not in wet:
+            draw_box(s, i, 0, zy, 1, 0.16, 0.2, shade(wa, 0.72), g=0.1, tex=0.04, bevel=True)
 
     if duplo:
         # plataforma (2º andar) + escada de 5 degraus + guarda-corpo, ordenados de trás pra frente
@@ -283,8 +379,8 @@ def build_room(pal, duplo, seed, lay=None):
         dl.sort(key=lambda it: (round(it[0], 3), it[1]))
         for _, _, args, kw in dl:
             draw_box(s, *args, **kw)
-    elif rng.random() < 0.6:
-        # tapete retangular (só em salas planas)
+    elif not cave and not wet and rng.random() < 0.6:
+        # tapete retangular (só em salas planas, sem rio)
         horiz = rng.random() < 0.5
         rw, rd = (3, 2) if horiz else (2, 3)
         rx, ry = rng.randint(2, N - rw - 1), rng.randint(2, N - rd - 1)
@@ -314,6 +410,8 @@ def build_room(pal, duplo, seed, lay=None):
         x, y = rng.uniform(0.25, N - 0.7), rng.uniform(0.25, N - 0.7)
         if duplo and 2.9 < x < 5.4 and 2.5 < y < 5.5:
             continue
+        if (int(x), int(y)) in wet:
+            continue
         kind = rng.choice(["stone", "stone", "moss"])
         rub.append((x + y, x, y, rng.uniform(0.08, 0.22), kind))
     rub.sort()
@@ -328,6 +426,14 @@ def build_room(pal, duplo, seed, lay=None):
             draw_box(s, x, y, gz, sz, sz, sz * 0.8, shade(fa, 0.6 + rng.random() * 0.3), g=0)
             draw_box(s, x + sz * 0.15, y + sz * 0.15, gz + sz * 0.8, sz * 0.55, sz * 0.55, sz * 0.3,
                      shade(fa, 0.8 + rng.random() * 0.2), outline=False)
+    if lay:
+        for (dx_, dy_, kd) in lay["decor"]:      # decoração rasteira (poças, musgo, pedrinhas) vai no cenário em cache
+            if kd in FLAT_KINDS:
+                gz_ = ground(dx_, dy_, duplo)
+                for (px_, py_, pz_, pw, pd, ph, pc) in decor_parts2(kd, 0.0):
+                    draw_box(s, dx_ + px_, dy_ + py_, gz_ + pz_, pw, pd, ph, pc, outline=False)
+        if cave:
+            _cave_extras(s, rng, lay, pal, wet)
     return s
 
 
@@ -3247,9 +3353,150 @@ def is_duplo(f):
 
 
 # ------------------------------------------------- geração procedural de andares
+# ------------------------------------------------ cenário: cavernas, rios e decoração nova
+CAVE_PALS = [  # chão A, chão B, parede A, parede B, fundo, brilho (cristais / musgo / poeira)
+    ((104, 94, 88), (88, 80, 76), (74, 68, 72), (60, 55, 62), (8, 8, 14), (90, 200, 255)),
+    ((78, 92, 84), (64, 78, 72), (58, 72, 70), (46, 58, 58), (6, 14, 14), (110, 255, 160)),
+    ((126, 96, 72), (108, 80, 60), (96, 70, 58), (78, 56, 48), (16, 8, 6), (255, 140, 90)),
+    ((92, 84, 110), (76, 68, 94), (68, 60, 90), (54, 48, 74), (10, 8, 20), (200, 130, 255)),
+]
+LIQUIDS = {
+    "agua": dict(deep=(38, 104, 186), light=(110, 190, 245), glow=None, nome="RIO",
+                 ponte=((150, 108, 60), (110, 76, 44))),
+    "gelo": dict(deep=(120, 176, 214), light=(200, 240, 255), glow=None, nome="RIO GELADO",
+                 ponte=((150, 108, 60), (110, 76, 44))),
+    "lava": dict(deep=(176, 40, 12), light=(255, 160, 48), glow=(255, 110, 30), nome="RIO DE LAVA",
+                 ponte=((96, 92, 106), (66, 64, 78))),
+}
+CRYSTAL_COL = {"crystal_c": (90, 200, 255), "crystal_g": (110, 255, 160),
+               "crystal_o": (255, 140, 90), "crystal_p": (200, 130, 255)}
+CRYSTAL_KINDS = tuple(CRYSTAL_COL)          # mesma ordem de CAVE_PALS
+NEW_SOLID = ("boulder", "rock_pile", "stalagmite", "mushroom", "statue", "brazier") + CRYSTAL_KINDS
+NEW_SOFT = ("pebbles", "grass", "shrooms", "puddle", "glowmoss", "skull")
+EXTRA_DECOR = set(NEW_SOLID) | set(NEW_SOFT)
+FLAT_KINDS = {"puddle", "glowmoss", "pebbles"}            # desenhadas no cenário em cache
+NO_SHADOW = FLAT_KINDS | {"grass", "shrooms", "skull"}
+GLOW_KINDS = {"shrooms": (60, 220, 170), "mushroom": (70, 230, 180), "glowmoss": (80, 230, 120),
+              "brazier": (255, 150, 50)}
+GLOW_KINDS.update(CRYSTAL_COL)
+GLOW_R = {"glowmoss": 55, "shrooms": 50, "mushroom": 75, "brazier": 95}
+
+
+def decor_parts2(kind, t=0.0):
+    """Voxels (dx, dy, dz, w, d, h, cor) das decorações novas."""
+    if kind in CRYSTAL_COL:
+        col = CRYSTAL_COL[kind]
+        d, l = shade(col, 0.6), mix(col, 0.4)
+        return [(0.0, 0.05, 0, 0.5, 0.42, 0.10, (86, 84, 98)),
+                (0.08, 0.10, 0.10, 0.14, 0.14, 0.62, col), (0.09, 0.11, 0.72, 0.12, 0.12, 0.14, l),
+                (0.28, 0.12, 0.10, 0.16, 0.16, 0.42, d), (0.29, 0.13, 0.52, 0.14, 0.14, 0.10, col),
+                (0.16, 0.26, 0.10, 0.14, 0.14, 0.82, col), (0.17, 0.27, 0.92, 0.12, 0.12, 0.16, l),
+                (0.32, 0.28, 0.10, 0.10, 0.10, 0.28, l)]
+    if kind == "boulder":
+        return [(0.0, 0.05, 0, 0.8, 0.62, 0.34, (112, 108, 120)), (0.06, 0.10, 0.34, 0.66, 0.50, 0.28, (128, 124, 138)),
+                (0.20, 0.18, 0.62, 0.38, 0.30, 0.14, (142, 138, 152)), (0.62, 0.50, 0, 0.18, 0.18, 0.14, (100, 97, 110))]
+    if kind == "rock_pile":
+        return [(0.0, 0.0, 0, 0.38, 0.34, 0.22, (110, 108, 120)), (0.40, 0.10, 0, 0.30, 0.30, 0.16, (100, 98, 112)),
+                (0.12, 0.40, 0, 0.34, 0.30, 0.18, (122, 120, 132)), (0.08, 0.06, 0.22, 0.22, 0.20, 0.10, (136, 134, 146))]
+    if kind == "stalagmite":
+        return [(0.0, 0.0, 0, 0.5, 0.5, 0.28, (96, 90, 100)), (0.07, 0.07, 0.28, 0.36, 0.36, 0.30, (108, 102, 114)),
+                (0.14, 0.14, 0.58, 0.22, 0.22, 0.30, (120, 114, 126)), (0.20, 0.20, 0.88, 0.10, 0.10, 0.26, (134, 128, 140))]
+    if kind == "mushroom":
+        cap = (70, 200, 176)
+        return [(0.22, 0.22, 0, 0.20, 0.20, 0.46, (226, 214, 190)), (0.0, 0.0, 0.46, 0.64, 0.64, 0.12, shade(cap, 0.85)),
+                (0.10, 0.10, 0.58, 0.44, 0.44, 0.10, cap), (0.20, 0.20, 0.68, 0.24, 0.24, 0.06, mix(cap, 0.3)),
+                (0.12, 0.50, 0.55, 0.08, 0.08, 0.04, (250, 240, 200)), (0.46, 0.14, 0.55, 0.08, 0.08, 0.04, (250, 240, 200))]
+    if kind == "statue":
+        return [(0.0, 0.0, 0, 0.56, 0.56, 0.14, (112, 110, 124)), (0.08, 0.08, 0.14, 0.40, 0.40, 0.20, (128, 126, 140)),
+                (0.16, 0.16, 0.34, 0.24, 0.24, 0.50, (150, 148, 162)), (0.08, 0.20, 0.58, 0.08, 0.16, 0.26, (140, 138, 152)),
+                (0.40, 0.20, 0.58, 0.08, 0.16, 0.26, (140, 138, 152)), (0.20, 0.20, 0.84, 0.16, 0.16, 0.16, (164, 162, 176)),
+                (0.26, 0.04, 0.34, 0.04, 0.04, 0.70, (190, 196, 210))]
+    if kind == "brazier":
+        fl = 0.22 + 0.06 * math.sin(t * 9)
+        return [(0.10, 0.10, 0, 0.08, 0.08, 0.36, (60, 56, 64)), (0.40, 0.10, 0, 0.08, 0.08, 0.36, (60, 56, 64)),
+                (0.10, 0.40, 0, 0.08, 0.08, 0.36, (60, 56, 64)), (0.40, 0.40, 0, 0.08, 0.08, 0.36, (60, 56, 64)),
+                (0.04, 0.04, 0.36, 0.50, 0.50, 0.14, (86, 82, 94)), (0.0, 0.0, 0.50, 0.58, 0.58, 0.06, (110, 104, 120)),
+                (0.08, 0.08, 0.54, 0.42, 0.42, 0.06, (255, 110, 30)), (0.18, 0.18, 0.60, 0.22, 0.22, fl, (255, 170, 40)),
+                (0.24, 0.24, 0.60 + fl, 0.10, 0.10, 0.14, (255, 230, 120))]
+    if kind == "pebbles":
+        return [(0.0, 0.10, 0, 0.14, 0.12, 0.04, (150, 146, 156)), (0.22, 0.0, 0, 0.10, 0.10, 0.03, (120, 116, 128)),
+                (0.30, 0.26, 0, 0.16, 0.14, 0.05, (136, 132, 144)), (0.08, 0.34, 0, 0.10, 0.09, 0.03, (120, 116, 128))]
+    if kind == "grass":
+        g1, g2 = (70, 150, 70), (96, 184, 90)
+        return [(0.0, 0.0, 0, 0.05, 0.05, 0.22, g1), (0.08, 0.04, 0, 0.05, 0.05, 0.30, g2), (0.16, 0.0, 0, 0.05, 0.05, 0.20, g1),
+                (0.04, 0.12, 0, 0.05, 0.05, 0.26, g2), (0.14, 0.14, 0, 0.05, 0.05, 0.32, g1), (0.24, 0.08, 0, 0.05, 0.05, 0.20, g2),
+                (0.22, 0.20, 0, 0.05, 0.05, 0.26, g1)]
+    if kind == "shrooms":
+        st, cp = (230, 220, 200), (70, 220, 190)
+        return [(0.04, 0.04, 0, 0.07, 0.07, 0.16, st), (0.0, 0.0, 0.16, 0.15, 0.15, 0.08, cp),
+                (0.28, 0.10, 0, 0.06, 0.06, 0.11, st), (0.25, 0.07, 0.11, 0.12, 0.12, 0.07, shade(cp, 0.9)),
+                (0.14, 0.30, 0, 0.06, 0.06, 0.13, st), (0.11, 0.27, 0.13, 0.12, 0.12, 0.07, mix(cp, 0.2))]
+    if kind == "puddle":
+        return [(0.0, 0.0, 0, 0.5, 0.4, 0.02, (40, 70, 120)), (0.06, 0.04, 0.015, 0.3, 0.24, 0.012, (90, 150, 210))]
+    if kind == "glowmoss":
+        return [(0.0, 0.0, 0, 0.36, 0.30, 0.025, (40, 120, 80)), (0.10, 0.18, 0.02, 0.34, 0.28, 0.02, (70, 200, 120)),
+                (0.20, 0.04, 0.02, 0.10, 0.10, 0.03, (150, 255, 190))]
+    return [(0.0, 0.0, 0, 0.16, 0.14, 0.14, (230, 230, 215)), (0.03, 0.14, 0.02, 0.10, 0.04, 0.06, (210, 210, 196)),
+            (0.02, 0.0, 0.07, 0.04, 0.02, 0.05, DARK)]          # caveira
+
+
+def gen_river(rng, keys, sc, targets, liquid):
+    """Rio de uma borda à outra da sala (1 a 2 células, com curvas). Devolve (água, pontes, vaus, eixo)
+    ou None. Sempre deixa pelo menos uma travessia ligando o herói a todos os alvos."""
+    keyset = set(keys)
+    for _ in range(30):
+        axis = rng.choice(("x", "y"))
+        cur, wide = rng.randint(2, N - 3), rng.random() < 0.3
+        rows = []
+        for u in range(N):
+            row = [cur]
+            if u < N - 1 and rng.random() < 0.35:
+                nxt = max(2, min(N - 3, cur + rng.choice((-1, 1))))
+                if nxt != cur:
+                    row.append(nxt)
+                    cur = nxt
+            if wide:
+                row.append(max(row) + 1)
+            rows.append(row)
+        cell = (lambda v, u: (v, u)) if axis == "y" else (lambda v, u: (u, v))
+        cells = {cell(v, u) for u, row in enumerate(rows) for v in row}
+        if cells & keyset:
+            continue
+
+        def crossing(u):
+            return {cell(v, u) for v in rows[u]}
+        order = list(range(1, N - 1))
+        rng.shuffle(order)
+        chosen = None
+        for u in order:
+            if all(find_cells(sc, t, False, cells - crossing(u)) for t in targets):
+                chosen = [u]
+                break
+        if chosen is None:
+            continue
+        if rng.random() < 0.45:
+            for u in order:
+                if all(abs(u - c) >= 3 for c in chosen):
+                    chosen.append(u)
+                    break
+        bridges, fords = set(), set()
+        for u in chosen:
+            if liquid != "lava" and rng.random() < 0.3:
+                fords |= crossing(u)
+            else:
+                bridges |= crossing(u)
+        return cells - bridges - fords, bridges, fords, axis
+    return None
+
+
 DIRS8 = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)]
 BLOCK_OFF = {"crate": (0.2, 0.2), "barrel": (0.22, 0.22), "pillar": (0.25, 0.25), "rock": (0.2, 0.25)}
 SOFT_OFF = {"bones": (0.25, 0.3), "chest": (0.19, 0.29)}
+BLOCK_OFF.update({"boulder": (0.10, 0.15), "rock_pile": (0.15, 0.15), "stalagmite": (0.25, 0.25),
+                  "statue": (0.22, 0.22), "brazier": (0.20, 0.20), "mushroom": (0.17, 0.17)})
+BLOCK_OFF.update({k: (0.25, 0.25) for k in CRYSTAL_KINDS})
+SOFT_OFF.update({"pebbles": (0.2, 0.2), "grass": (0.3, 0.3), "shrooms": (0.25, 0.25), "puddle": (0.2, 0.3),
+                 "glowmoss": (0.3, 0.3), "skull": (0.35, 0.35)})
 
 
 def cell_of(x, y):
@@ -3324,7 +3571,7 @@ NO_TURN = {"mimic", "gelatinous_cube", "owlbear", "beholder"}
 
 def foe_front(kind):
     return 0.0 if kind in QUAD_FRONT else HERO_FRONT
-SOLID_KINDS = ("crate", "barrel", "pillar", "rock", "chest")   # decorações que não dá pra atravessar
+SOLID_KINDS = ("crate", "barrel", "pillar", "rock", "chest") + NEW_SOLID   # decorações que não dá pra atravessar
 
 
 def angle_diff(a, b):
@@ -3464,10 +3711,20 @@ def gen_floor(f, rng, prev=None, boss_bag=None):
             w.pop("duplo", None)
         room = wchoice(rng, w)
     duplo = room == "duplo"
+    # ---- andar de caverna (nunca dois seguidos, nunca no 1º andar nem nas salas de 2 andares)
+    cave = (not duplo and f >= 2 and not prev.get("cave")
+            and rng.random() < (0.38 if room == "boss" else 0.30))
 
     # ---- bioma
-    pi = rng.choice([i for i in range(len(PALS)) if i != prev.get("pal")])
-    pal = jitter_pal(PALS[pi], rng)
+    ci = -1
+    if cave:
+        ci = rng.randrange(len(CAVE_PALS))
+        pi = 100 + ci
+        pal = jitter_pal(CAVE_PALS[ci], rng)
+    else:
+        pi = rng.choice([i for i in range(len(PALS)) if i != prev.get("pal")])
+        pal = jitter_pal(PALS[pi], rng)
+    liquid = "lava" if (pi == 2 or ci == 2) else ("gelo" if pi == 3 else "agua")
 
     def cc(c, jit=0.0):
         return (c[0] + 0.5 + rng.uniform(-jit, jit), c[1] + 0.5 + rng.uniform(-jit, jit))
@@ -3529,14 +3786,27 @@ def gen_floor(f, rng, prev=None, boss_bag=None):
     if room == "tesouro":
         chest = (min(N - 1, sc[0] + 1), sc[1]) if sc[0] <= sc[1] else (sc[0], min(N - 1, sc[1] + 1))
 
+    # ---- rio (água, gelo ou lava) de borda a borda, com ponte ou vau
+    water, bridges, fords, river_axis = set(), set(), set(), "y"
+    if not duplo and f >= 2 and rng.random() < (0.55 if cave else 0.28):
+        keys = [sc, stc] + foe_cells + ([chest] if chest else [])
+        res = gen_river(rng, keys, sc, foe_cells + [stc], liquid)
+        if res:
+            water, bridges, fords, river_axis = res
+
     # ---- obstáculos (sempre deixando caminho livre até tudo)
     reserve = set()
     for c in [sc, stc] + foe_cells + ([chest] if chest else []):
         for di in (-1, 0, 1):
             for dj in (-1, 0, 1):
                 reserve.add((c[0] + di, c[1] + dj))
-    arche = rng.choice(["aberta", "pilares"]) if room == "boss" else \
-        rng.choice(["aberta", "pilares", "entulho", "caixas", "caixas"])
+    reserve |= bridges | fords
+    if cave:
+        arche = "caverna"
+    elif room == "boss":
+        arche = rng.choice(["aberta", "pilares", "ruinas"])
+    else:
+        arche = rng.choice(["aberta", "pilares", "entulho", "caixas", "caixas", "ruinas", "jardim", "pedras"])
     cand = [(i, j) for i in range(N) for j in range(N)]
     rng.shuffle(cand)
     if arche == "pilares":
@@ -3549,18 +3819,32 @@ def gen_floor(f, rng, prev=None, boss_bag=None):
         mid = rng.choice(cand)
         cand.sort(key=lambda c: math.hypot(c[0] - mid[0], c[1] - mid[1]) + rng.uniform(0, 1.6))
         kinds, want = ["crate", "barrel"], rng.randint(4, 8)
+    elif arche == "caverna":
+        kinds, want = ["stalagmite", "stalagmite", "boulder", "boulder", CRYSTAL_KINDS[ci], "mushroom"], rng.randint(5, 9)
+    elif arche == "ruinas":
+        kinds, want = ["statue", "pillar", "pillar", "rock_pile", "brazier", "boulder"], rng.randint(3, 6)
+    elif arche == "jardim":
+        kinds, want = ["mushroom", "mushroom", "boulder", "rock_pile"], rng.randint(3, 6)
+    elif arche == "pedras":
+        mid = rng.choice(cand)
+        cand.sort(key=lambda c: math.hypot(c[0] - mid[0], c[1] - mid[1]) + rng.uniform(0, 2.2))
+        kinds, want = ["boulder", "boulder", "rock", "rock_pile"], rng.randint(4, 8)
     else:
-        kinds, want = ["rock", "crate", "barrel", "pillar"], rng.randint(1, 3)
+        kinds, want = ["rock", "crate", "barrel", "pillar", "boulder"], rng.randint(1, 3)
     targets = foe_cells + [stc]
-    blocked, decor = set(), []
+    blocked, decor = set(water), []
+    placed = 0
     for c in cand:
-        if len(blocked) >= want:
+        if placed >= want:
             break
+        if c in water:
+            continue
         if c in reserve or (duplo and 3 <= c[0] <= 5):
             continue
         trial = blocked | {c}
         if all(find_cells(sc, t, duplo, trial) for t in targets):
             blocked = trial
+            placed += 1
             kd = rng.choice(kinds)
             ox, oy = BLOCK_OFF[kd]
             decor.append((c[0] + ox, c[1] + oy, kd))
@@ -3573,8 +3857,16 @@ def gen_floor(f, rng, prev=None, boss_bag=None):
     free = [c for c in cand if c not in blocked and c not in pcells and c not in reserve
             and not (duplo and 3 <= c[0] <= 5)]
     rng.shuffle(free)
-    for c in free[:rng.randint(2, 5)]:
-        kd = "chest" if rng.random() < 0.25 else "bones"
+    soft_kinds = (["pebbles", "shrooms", "glowmoss", "glowmoss", "puddle", "bones", "pebbles", "skull"] if cave
+                  else ["bones", "bones", "pebbles", "grass", "grass", "skull"])
+    bank = [c for c in free if any((c[0] + d[0], c[1] + d[1]) in water for d in DIRS8[:4])]
+    for c in bank[:3]:                                  # margem do rio: pedrinhas e capim
+        free.remove(c)
+        kd = rng.choice(["pebbles", "grass", "pebbles"])
+        ox, oy = SOFT_OFF[kd]
+        decor.append((c[0] + ox, c[1] + oy, kd))
+    for c in free[:rng.randint(2, 5) + (3 if cave else 0)]:
+        kd = "chest" if rng.random() < 0.2 else rng.choice(soft_kinds)
         ox, oy = SOFT_OFF[kd]
         decor.append((c[0] + ox, c[1] + oy, kd))
     if chest:
@@ -3598,6 +3890,28 @@ def gen_floor(f, rng, prev=None, boss_bag=None):
         banners += [(ax, v) for v in bv]
         torches += [(ax, v) for v in spread(rng.choice([2, 2, 3]), 1.2, 7.6, 2.2, [(b - 0.4, b + 1.4) for b in bv])]
 
+    wall_crystals, tunnel, motes = [], None, []
+    if cave:
+        banners, torches = [], []
+        riv = []
+        for (i, j) in water | bridges | fords:
+            if i == 0:
+                riv.append(("x", j))
+            if j == 0:
+                riv.append(("y", i))
+        tax = rng.choice(("x", "y"))
+        tv = spread(1, 1.0, 5.5, 1.0, [(v - 0.6, v + 1.6) for (a, v) in riv if a == tax])
+        if tv:
+            tunnel = (tax, tv[0])
+        for ax in ("x", "y"):
+            ivs = [(v - 0.4, v + 1.4) for (a, v) in riv if a == ax]
+            if tunnel and tunnel[0] == ax:
+                ivs.append((tunnel[1] - 0.6, tunnel[1] + 2.6))
+            for v in spread(rng.choice([1, 2, 2, 3]), 0.9, 7.4, 2.0, ivs):
+                wall_crystals.append((ax, v, round(rng.uniform(0.7, 1.7), 2), pal[5]))
+        for _ in range(16):
+            motes.append((rng.uniform(1, N - 1), rng.uniform(1, N - 1), rng.uniform(0.5, 2.2), rng.uniform(0, 6.3)))
+
     names = {"boss": None, "elite": "INIMIGO ELITE! (recompensa extra)", "tesouro": "SALA DO TESOURO!",
              "duplo": "MASMORRA DE 2 ANDARES!", "swarm": f"EMBOSCADA! {len(foes)} INIMIGOS!", "normal": ""}
     if room == "boss":
@@ -3605,13 +3919,19 @@ def gen_floor(f, rng, prev=None, boss_bag=None):
         banner = "CUIDADO! UM DRAGÃO!" if k == "dragon" else f"CHEFE: {ENEMY_NAMES.get(k, k)}!"
     else:
         banner = names[room]
+        if cave:
+            banner = {"normal": "CAVERNA ESCURA!", "swarm": "EMBOSCADA NA CAVERNA!", "tesouro": "TESOURO NA CAVERNA!",
+                      "elite": "ELITE NA CAVERNA!"}.get(room, banner)
+        elif water and room == "normal":
+            banner = LIQUIDS[liquid]["nome"] + " CORTA A SALA!"
 
     sp = cc(sc)
     for fo, c in zip(foes, foe_cells):
         fo["x"], fo["y"] = cc(c, 0.15)
     return dict(room=room, duplo=duplo, pal_idx=pi, pal=pal, spawn=sp, foes=foes, stairs=cc(stc),
                 decor=decor, blocked=blocked, torches=torches, banners=banners, banner=banner,
-                arche=arche)
+                arche=arche, cave=cave, water=water, bridges=bridges, fords=fords, river_axis=river_axis,
+                liquid=liquid, wall_crystals=wall_crystals, tunnel=tunnel, motes=motes)
 
 
 # ------------------------------------------------------------------ cartas
@@ -4013,6 +4333,7 @@ class Game:
         except Exception:
             self.sounds = {}
         self.vig = make_vignette()
+        self.cglow = {}
         self.glow = [make_glow(110, (70, 40, 12)), make_glow(120, (90, 52, 16))]
         self.stair_glow = [make_glow(120, (10, 26, 70)), make_glow(125, (18, 44, 110)), make_glow(130, (28, 64, 150))]
         self.best = 1
@@ -4117,7 +4438,8 @@ class Game:
         rng = random.Random(self.run_seed * 1000003 + f * 7919)
         lay = gen_floor(f, rng, self.prev, self.boss_bag)
         self.lay = lay
-        self.prev = {"room": lay["room"], "pal": lay["pal_idx"], "kinds": [s["kind"] for s in lay["foes"]]}
+        self.prev = {"room": lay["room"], "pal": lay["pal_idx"], "kinds": [s["kind"] for s in lay["foes"]],
+                     "cave": lay["cave"]}
         self.pal = lay["pal"]
         self.duplo = lay["duplo"]
         self.room_kind = lay["room"]
@@ -4183,6 +4505,8 @@ class Game:
 
     def build_solids(self):
         out = [self.decor_rect(x, y, k) for (x, y, k) in self.decor if k in SOLID_KINDS]
+        for (i, j) in self.lay.get("water", ()):      # o rio é parede para o herói (só ponte/vau atravessa)
+            out.append((i + 0.06, j + 0.06, i + 0.94, j + 0.94))
         if self.duplo:
             for j in range(N):
                 if not 3 <= j <= 4:     # fora da rampa: faixa do desnível + guarda-corpo da plataforma
@@ -4255,6 +4579,18 @@ class Game:
         self.px, self.py = push_out(ox + dx * step, oy + dy * step, HERO_R, self.solids + self.foe_solids())
         return math.hypot(self.px - ox, self.py - oy)
 
+    def dry_line(self, fo):
+        """False se há rio entre o herói e o inimigo (não dá pra lutar do outro lado da água)."""
+        water = self.lay.get("water")
+        if not water:
+            return True
+        for k in range(13):
+            x = self.px + (fo["x"] - self.px) * k / 12
+            y = self.py + (fo["y"] - self.py) * k / 12
+            if cell_of(x, y) in water:
+                return False
+        return True
+
     def walk_manual(self, dt):
         dx, dy = self.move_input()
         moved = self.drive(dx, dy, dt, 3.2)
@@ -4269,7 +4605,7 @@ class Game:
             self.give_card()
             return
         self.cur, self.enemy = best, self.foes[best]
-        if bd <= self.enemy["stop"] + 0.02:      # encostou num inimigo: começa a conta
+        if bd <= self.enemy["stop"] + 0.02 and self.dry_line(self.enemy):      # encostou num inimigo: começa a conta
             self.moving = False
             self.start_quiz()
 
@@ -4787,7 +5123,9 @@ class Game:
             X, Y, Z = x + dx * s, y + dy * s, z + dz * s
             items.append(((X + w * s / 2) + (Y + d * s / 2), Z, (X, Y, Z, w * s, d * s, h * s, c, True, g * s)))
 
-    def decor_parts(self, kind):
+    def decor_parts(self, kind, t=0.0):
+        if kind in EXTRA_DECOR:
+            return decor_parts2(kind, t)
         if kind == "crate":
             return [(0, 0, 0, 0.6, 0.6, 0.6, (160, 112, 64)), (-0.01, -0.01, 0.54, 0.62, 0.62, 0.06, (190, 140, 84)),
                     (-0.01, -0.01, 0, 0.62, 0.62, 0.05, (100, 70, 40)), (0.2, 0.6, 0.15, 0.2, 0.02, 0.3, (120, 84, 48)),
@@ -4808,12 +5146,98 @@ class Game:
         return [(0.0, 0.1, 0, 0.3, 0.1, 0.07, (225, 225, 210)), (0.2, 0.3, 0, 0.1, 0.3, 0.07, (215, 215, 200)),
                 (0.35, 0.0, 0, 0.12, 0.12, 0.12, (236, 236, 220)), (0.36, 0.01, 0.06, 0.03, 0.03, 0.04, DARK)]
 
+    def cglow_img(self, r, col, k=1.0):
+        key = (r, col, int(k * 4))
+        g = self.cglow.get(key)
+        if g is None:
+            q = 0.25 + 0.75 * (int(k * 4) / 4.0)
+            g = make_glow(r, tuple(int(c * 0.30 * q) for c in col))
+            self.cglow[key] = g
+        return g
+
+    def draw_liquid(self, scr, cam):
+        """Rio animado: correnteza em riscos de luz, brilho da lava e cachoeira na borda da ilha."""
+        lay = self.lay
+        water, fords, bridges = lay.get("water", set()), lay.get("fords", set()), lay.get("bridges", set())
+        if not water and not fords:
+            return
+        liq = LIQUIDS[lay["liquid"]]
+        t, axis = self.t, lay["river_axis"]
+        fx, fy = (0.0, 1.0) if axis == "y" else (1.0, 0.0)          # sentido da correnteza
+        P = lambda x, y, z: proj(x, y, z, cam)
+
+        def lim(c):    # até onde o risco pode ir sem passar por cima da margem que fica na frente
+            return 1.0 if c in water else (0.8 if c in fords else (0.64 if c in bridges else 0.72))
+        for (i, j) in sorted(water | fords, key=lambda c: c[0] + c[1]):
+            zt = -0.30 if (i, j) in water else -0.12
+            mx, my = lim((i + 1, j)), lim((i, j + 1))
+            for k in range(4):
+                h = ((i * 7 + j * 13 + k * 5) % 10) / 10.0
+                lat = 0.10 + 0.60 * (((i * 3 + j * 11 + k * 7) % 9) / 8.0)
+                ph = (t * 0.45 + h + k * 0.25) % 1.0
+                ln = 0.30
+                u = ph * (1.0 - ln)
+                x0, y0 = i + (lat if fx == 0 else u), j + (lat if fy == 0 else u)
+                x1, y1 = min(x0 + fx * ln, i + mx), min(y0 + fy * ln, j + my)
+                x0, y0 = min(x0, i + mx), min(y0, j + my)
+                col = mix(liq["deep"], 0.25 + 0.55 * math.sin(math.pi * ph), liq["light"])
+                pygame.draw.line(scr, col, P(x0, y0, zt), P(x1, y1, zt), 2)
+            if liq["glow"] is not None and (i, j) in water:
+                pl = 0.6 + 0.4 * math.sin(t * 2.0 + i * 1.7 + j * 2.3)
+                gp = P(i + 0.5, j + 0.5, zt)
+                scr.blit(self.cglow_img(70, liq["glow"], pl), (gp[0] - 70, gp[1] - 70),
+                         special_flags=pygame.BLEND_RGB_ADD)
+        for (i, j) in water:                                        # cachoeira pela borda da ilha flutuante
+            if (axis == "y" and j == N - 1) or (axis == "x" and i == N - 1):
+                A = (lambda u, z: P(i + u, N, z)) if axis == "y" else (lambda u, z: P(N, j + u, z))
+                zt, zb = -0.30, -1.7
+                pygame.draw.polygon(scr, shade(liq["deep"], 0.85), [A(0, zt), A(1, zt), A(1, zb), A(0, zb)])
+                for k in range(5):
+                    for sg in range(4):
+                        ph = (t * 1.3 + sg * 0.25 + k * 0.13) % 1.0
+                        z0 = zt - ph * 1.2
+                        pygame.draw.line(scr, mix(liq["light"], 0.3 + 0.4 * (1 - ph)),
+                                         A(0.1 + 0.2 * k, z0), A(0.1 + 0.2 * k, max(zb, z0 - 0.25)), 2)
+                for k in range(3):
+                    mp = A(0.2 + 0.3 * k, zb + 0.05 * math.sin(t * 3 + k))
+                    pygame.draw.circle(scr, mix(liq["light"], 0.5), (int(mp[0]), int(mp[1])), 4 + (k % 2))
+
+    def draw_glows(self, scr, cam):
+        t, duplo = self.t, self.duplo
+        for (x, y, kind) in self.decor:
+            gc = GLOW_KINDS.get(kind)
+            if gc is None:
+                continue
+            pl = 0.65 + 0.35 * math.sin(t * 2.2 + x * 3.1 + y * 1.7)
+            if kind == "brazier":
+                pl = 0.5 + 0.5 * math.sin(t * 9 + x) * math.sin(t * 5.3 + y)
+            r = GLOW_R.get(kind, 80 if kind in CRYSTAL_COL else 70)
+            gp = proj(x + 0.3, y + 0.3, ground(x, y, duplo) + 0.45, cam)
+            scr.blit(self.cglow_img(r, gc, pl), (gp[0] - r, gp[1] - r), special_flags=pygame.BLEND_RGB_ADD)
+        for i, (ax, v, zc, col) in enumerate(self.lay.get("wall_crystals", ())):
+            pl = 0.65 + 0.35 * math.sin(t * 1.8 + i * 2.4)
+            gp = proj(0.15, v + 0.25, zc + 0.35, cam) if ax == "x" else proj(v + 0.25, 0.15, zc + 0.35, cam)
+            scr.blit(self.cglow_img(85, col, pl), (gp[0] - 85, gp[1] - 85), special_flags=pygame.BLEND_RGB_ADD)
+
+    def draw_motes(self, scr, cam):
+        """Poeira luminosa flutuando na caverna."""
+        col, t = self.pal[5], self.t
+        for (x0, y0, z0, ph) in self.lay.get("motes", ()):
+            x = x0 + 0.45 * math.sin(t * 0.35 + ph)
+            y = y0 + 0.45 * math.cos(t * 0.30 + ph * 1.3)
+            z = z0 + 0.35 * math.sin(t * 0.6 + ph * 2.0)
+            a = 0.5 + 0.5 * math.sin(t * 1.7 + ph * 3)
+            p = proj(x, y, z, cam)
+            pygame.draw.circle(scr, mix((30, 30, 40), 0.35 + 0.65 * a, col), (int(p[0]), int(p[1])), 2 if a > 0.6 else 1)
+
     def draw_scene(self):
         scr = self.screen
         cam = self.cam
         scr.fill(self.pal[4])
         scr.blit(self.room, (int(cam[0]), int(cam[1])))
         duplo = self.duplo
+
+        self.draw_liquid(scr, cam)
 
         # escada de descida (poço de voxels)
         if self.stairs:
@@ -4836,6 +5260,8 @@ class Game:
             g = self.glow[1 if fl > 0.5 else 0]
             scr.blit(g, (gp[0] - g.get_width() // 2, gp[1] - g.get_height() // 2), special_flags=pygame.BLEND_RGB_ADD)
 
+        self.draw_glows(scr, cam)
+
         # sombras
         sh = pygame.Surface((W, H), pygame.SRCALPHA)
         shadows = [(self.px, self.py, ground(self.px, self.py, duplo), 0.34 * self.pscale)]
@@ -4849,6 +5275,8 @@ class Game:
                 pts = [proj(x - rr, y, z0, cam), proj(x, y - rr, z0, cam), proj(x + rr, y, z0, cam), proj(x, y + rr, z0, cam)]
                 pygame.draw.polygon(sh, (8, 16, 34, ak), pts)
         for (x, y, kind) in self.decor:
+            if kind in NO_SHADOW:
+                continue
             z0 = ground(x, y, duplo) + 0.02
             pts = [proj(x - 0.1, y - 0.1, z0, cam), proj(x + 0.7, y - 0.1, z0, cam),
                    proj(x + 0.7, y + 0.7, z0, cam), proj(x - 0.1, y + 0.7, z0, cam)]
@@ -4878,8 +5306,10 @@ class Game:
         items = []
         objs = []   # caixas (x0, y0, x1, y1, chave mín., chave máx.) de tudo que o herói pode ficar na frente/atrás
         for (x, y, kind) in self.decor:
+            if kind in FLAT_KINDS:      # já está desenhada no cenário em cache
+                continue
             n0 = len(items)
-            self.place(items, self.decor_parts(kind), x, y, ground(x, y, duplo), g=0.15)
+            self.place(items, self.decor_parts(kind, self.t), x, y, ground(x, y, duplo), g=0.15)
             if kind in SOLID_KINDS:
                 ks = [it[0] for it in items[n0:]]
                 objs.append((*self.decor_rect(x, y, kind), min(ks), max(ks)))
@@ -5012,6 +5442,9 @@ class Game:
                 continue
             draw_box(scr, x, y, z, w, d, h, c, cam, o, g)
 
+        if self.lay.get("cave"):
+            self.draw_motes(scr, cam)
+            scr.blit(self.vig, (0, 0))       # caverna: mais escura (vinheta dupla)
         scr.blit(self.vig, (0, 0))
 
     # ------------------------------------------------------------ cartas UI
