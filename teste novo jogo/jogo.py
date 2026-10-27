@@ -1477,6 +1477,133 @@ def barraco_sprite(seed):
     return s
 
 
+def barraco70_sprite(seed):
+    """Barraco da Rocinha em 1970: tabuas ou tijolo aparente, telhado de zinco com pedras, cano de fogao."""
+    r = random.Random(seed * 31 + 7)
+    paints = [(204, 160, 104), (160, 122, 88), (222, 190, 130), (126, 168, 156), (198, 116, 100),
+              (226, 210, 158), (146, 158, 184), (180, 196, 126), (232, 150, 90), (214, 214, 200)]
+    wall = r.choice(paints)
+    floors = 2 if r.random() < .32 else 1
+    w = r.choice((32, 34, 36))
+    fh = 17
+    bh = fh * floors + 2
+    rh = 11
+    h = rh + bh
+    s = pygame.Surface((w, h), pygame.SRCALPHA)
+    yb = h - bh
+    for f in range(floors):
+        fy = yb + f * fh
+        hh = fh + (2 if f == floors - 1 else 0)
+        if f == floors - 1 and r.random() < .4:                      # terreo de tijolo aparente
+            bc = (176, 98, 82)
+            pygame.draw.rect(s, tone(bc, -.45), (0, fy, w, hh))
+            pygame.draw.rect(s, bc, (1, fy, w - 2, hh - 1))
+            for yy in range(fy + 2, fy + hh - 1, 3):
+                pygame.draw.line(s, tone(bc, -.3), (1, yy), (w - 2, yy))
+                for xx in range(2 + (yy // 3 % 2) * 3, w - 2, 6):
+                    pygame.draw.line(s, tone(bc, -.3), (xx, yy), (xx, yy + 2))
+        else:
+            wc = tone(wall, -.08 * f)
+            pygame.draw.rect(s, tone(wc, -.5), (0, fy, w, hh))
+            pygame.draw.rect(s, wc, (1, fy, w - 2, hh - 1))
+            for xx in range(3, w - 2, 3):                            # tabuas
+                pygame.draw.line(s, tone(wc, -.22), (xx, fy), (xx, fy + hh - 2))
+            for _ in range(2):                                       # remendos
+                pygame.draw.rect(s, tone(wc, r.choice((-.3, .25))), (r.randrange(2, w - 8), fy + r.randrange(2, hh - 6), r.randint(3, 6), r.randint(3, 5)))
+    zc = r.choice(((150, 156, 168), (164, 112, 90), (138, 144, 156), (176, 124, 98), (118, 128, 140)))
+    pygame.draw.polygon(s, tone(zc, -.45), [(0, yb + 1), (4, 2), (w - 5, 2), (w - 1, yb + 1)])
+    pygame.draw.polygon(s, zc, [(1, yb), (5, 3), (w - 6, 3), (w - 2, yb)])
+    s.set_clip(pygame.Rect(5, 3, w - 10, yb - 3))
+    for xx in range(4, w - 4, 3):                                    # chapas de zinco
+        pygame.draw.line(s, tone(zc, .25), (xx, 3), (xx, yb))
+        pygame.draw.line(s, tone(zc, -.2), (xx + 1, 3), (xx + 1, yb))
+    s.set_clip(None)
+    pygame.draw.rect(s, tone(zc, -.55), (0, yb, w, 2))
+    for _ in range(r.randint(1, 3)):                                 # pedras segurando o zinco
+        px_, py_ = r.randint(7, w - 12), r.randint(4, max(4, yb - 5))
+        pygame.draw.ellipse(s, (110, 104, 116), (px_, py_, 5, 3))
+        pygame.draw.ellipse(s, (172, 166, 178), (px_, py_, 4, 2))
+    if r.random() < .5:                                              # cano do fogao
+        cx_ = r.randint(w // 2, w - 8)
+        pygame.draw.rect(s, (66, 60, 78), (cx_, 0, 2, 7))
+        pygame.draw.rect(s, (110, 104, 124), (cx_ - 1, 0, 4, 1))
+    pygame.draw.line(s, (40, 34, 50), (w - 4, 4), (w - 1, 1))        # gambiarra da luz
+    dx = r.randint(4, w - 14)
+    pygame.draw.rect(s, (70, 50, 48), (dx, h - 14, 8, 13))
+    pygame.draw.rect(s, (126, 90, 72), (dx + 1, h - 13, 6, 11))
+    s.set_at((dx + 6, h - 8), (240, 210, 120))
+    wx = w - 13 if dx < w // 2 else 4
+    pygame.draw.rect(s, (70, 60, 90), (wx, h - 16, 9, 8))
+    pygame.draw.rect(s, (255, 226, 130) if r.random() < .7 else (120, 150, 200), (wx + 1, h - 15, 7, 6))
+    pygame.draw.rect(s, tone(wall, -.35), (wx - 3 if wx > 6 else wx + 9, h - 16, 3, 8))
+    if floors == 2:
+        for wx2 in (4, w - 12):
+            pygame.draw.rect(s, (70, 60, 90), (wx2, yb + 4, 8, 8))
+            pygame.draw.rect(s, (255, 226, 130) if r.random() < .6 else (120, 150, 200), (wx2 + 1, yb + 5, 6, 6))
+    if r.random() < .5:                                              # lata d'agua na porta
+        pygame.draw.rect(s, (60, 90, 140), (max(0, dx - 5), h - 7, 4, 6))
+        pygame.draw.rect(s, (110, 150, 200), (max(0, dx - 5), h - 7, 3, 5))
+    overlay(s, (w - 7, yb, 6, bh), (60, 24, 100, 55))
+    return s
+
+
+def bica_sprite():
+    """Bica d'agua publica: torneira de concreto e latas d'agua esperando a vez."""
+    s = pygame.Surface((30, 26), pygame.SRCALPHA)
+    pygame.draw.ellipse(s, (96, 140, 190), (2, 20, 26, 6))
+    pygame.draw.ellipse(s, (150, 190, 226), (5, 21, 14, 3))
+    pygame.draw.rect(s, (112, 104, 118), (8, 8, 12, 15))
+    pygame.draw.rect(s, (176, 168, 178), (9, 8, 10, 14))
+    pygame.draw.rect(s, (214, 208, 214), (9, 8, 10, 2))
+    pygame.draw.rect(s, (86, 86, 104), (13, 3, 3, 8))
+    pygame.draw.rect(s, (86, 86, 104), (13, 3, 8, 2))
+    pygame.draw.rect(s, (60, 60, 80), (19, 5, 2, 3))
+    pygame.draw.line(s, (150, 200, 240), (20, 8), (20, 17))
+    for cx_, cy_ in ((1, 14), (22, 15), (25, 19)):
+        pygame.draw.rect(s, (110, 116, 132), (cx_, cy_, 5, 7))
+        pygame.draw.rect(s, (190, 196, 210), (cx_, cy_, 4, 6))
+        pygame.draw.rect(s, (230, 234, 244), (cx_ + 1, cy_, 1, 5))
+    return s
+
+
+def venda_sprite():
+    """Venda/bar de madeira do largo da Rocinha, com toldo de lona e garrafas na prateleira."""
+    w, h = 44, 42
+    s = pygame.Surface((w, h), pygame.SRCALPHA)
+    pygame.draw.polygon(s, (92, 98, 112), [(0, 14), (5, 2), (w - 6, 2), (w, 14)])
+    pygame.draw.polygon(s, (150, 156, 168), [(1, 13), (6, 3), (w - 7, 3), (w - 1, 13)])
+    for xx in range(8, w - 8, 3):
+        pygame.draw.line(s, (186, 190, 200), (xx, 4), (xx, 12))
+    pygame.draw.rect(s, (84, 56, 52), (1, 14, w - 2, h - 14))
+    pygame.draw.rect(s, (176, 124, 88), (2, 14, w - 4, h - 15))
+    for xx in range(4, w - 3, 3):
+        pygame.draw.line(s, (140, 96, 70), (xx, 14), (xx, h - 2))
+    pygame.draw.rect(s, (46, 30, 40), (8, 22, 28, 12))
+    pygame.draw.rect(s, (252, 214, 120), (10, 24, 24, 8))
+    for i, c in enumerate(((60, 160, 90), (220, 90, 70), (240, 200, 80), (90, 140, 210), (220, 90, 70))):
+        pygame.draw.rect(s, c, (12 + i * 4, 26, 2, 5))
+    pygame.draw.rect(s, (110, 74, 58), (6, 33, 32, 7))
+    pygame.draw.rect(s, (200, 150, 104), (6, 33, 32, 2))
+    for i in range(0, w, 6):
+        pygame.draw.rect(s, (214, 70, 66) if (i // 6) % 2 == 0 else (246, 238, 226), (i, 14, 6, 6))
+    pygame.draw.rect(s, (60, 30, 30), (13, 5, 18, 9))
+    pygame.draw.rect(s, (240, 226, 190), (14, 6, 16, 7))
+    draw_tiny(s, "BAR", 17, 7, (170, 40, 40))
+    return s
+
+
+def placa_sprite():
+    """Placa de madeira na entrada do morro."""
+    s = pygame.Surface((36, 30), pygame.SRCALPHA)
+    pygame.draw.rect(s, (92, 62, 50), (5, 18, 3, 12))
+    pygame.draw.rect(s, (92, 62, 50), (28, 18, 3, 12))
+    pygame.draw.rect(s, (60, 50, 70), (0, 0, 36, 20))
+    pygame.draw.rect(s, (240, 236, 220), (1, 1, 34, 18))
+    draw_tiny(s, "ROCINHA", 4, 3, (190, 50, 50))
+    draw_tiny(s, "1970", 10, 11, (70, 60, 90))
+    return s
+
+
 def barraca_sprite(c1, c2, r):
     """Barraca de feira com toldo listrado e frutas."""
     s = pygame.Surface((38, 36), pygame.SRCALPHA)
@@ -2076,6 +2203,38 @@ def draw_degraus(g, tx, ty, rnd):
         g.fill((120, 150, 100), (x0 + rnd.randrange(12), y0 + rnd.randrange(14), 2, 2))
 
 
+def draw_beco(g, tx, ty, rnd):
+    """Beco da Rocinha: cimento gasto e terra batida, com remendos e poças de esgoto."""
+    x0, y0 = tx * TS, ty * TS
+    c = shade((178, 150, 126), rnd.randint(-6, 6))
+    g.fill(c, (x0, y0, TS, TS))
+    g.fill(tone(c, -.28), (x0, y0, TS, 2))
+    g.fill(tone(c, .12), (x0, y0 + 2, TS, 1))
+    for _ in range(7):
+        g.fill(tone(c, rnd.choice((-.18, .18))), (x0 + rnd.randrange(TS - 2), y0 + rnd.randrange(3, TS - 1), rnd.randrange(1, 4), 1))
+    if rnd.random() < .3:
+        g.fill(tone(c, .2), (x0 + rnd.randrange(8), y0 + rnd.randrange(4, 10), rnd.randrange(4, 8), 3))
+    if rnd.random() < .12:
+        pygame.draw.ellipse(g, (96, 108, 128), (x0 + rnd.randrange(6), y0 + 9, 9, 4))
+        pygame.draw.ellipse(g, (140, 156, 176), (x0 + rnd.randrange(6) + 2, y0 + 10, 4, 2))
+
+
+def draw_telhados(g, tx, ty, rnd):
+    """Chao sob os barracos (nao se anda): telhados de zinco, telha e lona vistos de cima."""
+    x0, y0 = tx * TS, ty * TS
+    g.fill((78, 60, 72), (x0, y0, TS, TS))
+    roofs = ((150, 156, 168), (168, 108, 84), (132, 138, 150), (184, 120, 92), (120, 128, 140), (96, 140, 150),
+             (176, 150, 110), (150, 100, 96))
+    for i in range(2):
+        for j in range(2):
+            c = roofs[_hash(tx * 2 + i, ty * 2 + j, 3) % len(roofs)]
+            bx, by = x0 + i * 8, y0 + j * 8
+            g.fill(tone(c, -.35), (bx, by, 8, 8))
+            g.fill(c, (bx, by, 7, 7))
+            for k in range(1, 7, 2):
+                g.fill(tone(c, .22), (bx + k, by, 1, 7))
+
+
 def draw_water(g, tx, ty, rnd):
     x0, y0 = tx * TS, ty * TS
     c = shade((84, 160, 196), rnd.randint(-5, 5))
@@ -2109,8 +2268,8 @@ def draw_azulejo(g, tx, ty, rnd):
 
 
 TILE_DRAW = {6: draw_beach_tile, 7: draw_beach_tile, 8: draw_calcadao, 9: draw_morro,
-             10: draw_degraus, 11: draw_water, 12: draw_pitch, 13: draw_azulejo}
-BLOCK_T = (0, 6, 9, 11)       # tiles em que não se anda: avenida, mar, rocha e lagoa
+             10: draw_degraus, 11: draw_water, 12: draw_pitch, 13: draw_azulejo, 15: draw_beco, 16: draw_telhados}
+BLOCK_T = (0, 6, 9, 11, 16)   # tiles em que não se anda: avenida, mar, rocha, lagoa e telhados da Rocinha
 CROSS_ROWS = ((7, 8), (19, 20), (37, 38), (58, 59), (77, 78))     # travessias de pedestre da avenida
 
 
@@ -2124,7 +2283,7 @@ def district(px, py):
     if tx < AV1 + 4:
         return "Avenida Atlântica"
     if tx >= 87:
-        return "Morro da Esperança"
+        return "Favela da Rocinha"
     if ty < 9:
         return "Arcos da Lapa"
     if ty < 18:
@@ -2147,6 +2306,44 @@ def district(px, py):
 def shore(y):
     return AV1
 
+
+# ----------------------------------------------------------------------------
+# Rocinha, 1970: um morro so, com becos estreitos (1 tile) em terracos, escadarias ligando um beco ao outro,
+# um largo na entrada (bica d'agua e venda) e barracos de madeira e zinco em todo o resto
+# ----------------------------------------------------------------------------
+ROC_X0, ROC_X1 = 88, 108                  # colunas do morro (x1 exclusivo)
+ROC_ROWS = tuple(range(20, 86, 5))        # linha de cada beco horizontal (as casas ficam na borda de cima)
+ROC_LARGO = (88, 46, 93, 50)              # largo da entrada (x0, y0, x1, y1), entre os becos 45 e 50
+
+
+def _roc_stairs():
+    """Escadas e becos de ligacao entre dois becos: (x, y0, y1, largura, tile) por trecho."""
+    r = random.Random(1970)
+    segs = []
+    n = len(ROC_ROWS)
+    for k in range(n - 1):
+        ya, yb = ROC_ROWS[k] + 1, ROC_ROWS[k + 1]
+        if k == n - 2:                    # ultimo trecho: o resto e muro pichado
+            cols = [(88, 2, 10), (91, 1, 15)]
+        else:
+            lo, hi = (89, 93) if k % 2 == 0 else (101, 105)
+            if ROC_ROWS[k] == 45:         # abaixo do largo
+                lo, hi = 99, 105
+            x1 = r.randint(lo, hi)
+            dmin = 4 if ROC_ROWS[k] == 45 else 6
+            cand = [x for x in range(89, 107) if abs(x - (x1 + 1.0)) >= dmin and (ROC_ROWS[k] != 45 or x >= 96)]
+            cols = [(x1, 2, 10), (r.choice(cand), 1, r.choice((10, 15)))]
+        segs.append([(x, ya, yb, w, t) for x, w, t in cols])
+    return segs
+
+
+ROC_SEGS = _roc_stairs()
+ROC_LOOPS = []                            # trajetos de pedestres: sobem uma escada e descem pela outra
+for _k in (1, 3, 6, 8, 10, 12):
+    _a, _b = ROC_SEGS[_k][0], ROC_SEGS[_k][1]
+    _xa, _xb = (_a[0] + _a[3] / 2.0) * TS, (_b[0] + _b[3] / 2.0) * TS
+    _ya, _yb = ROC_ROWS[_k] * TS + 11, ROC_ROWS[_k + 1] * TS + 11
+    ROC_LOOPS.append([(_xa, _ya), (_xb, _ya), (_xb, _yb), (_xa, _yb)])
 
 TILE_COL = {0: (92, 82, 110), 1: (228, 204, 182), 2: (92, 152, 100),
             3: (180, 132, 124), 4: (58, 114, 92), 5: (206, 178, 164)}
@@ -2223,19 +2420,23 @@ def build_tiles():
             d2 = dx * dx + dy * dy
             if d2 < 1.0:
                 tiles[y][x] = 9 if (d2 > 0.5 and x < 15) else 5
-    # morro: mata, rochas ao fundo, escadarias e becos
+    # morro: mata e rochas ao fundo
     fill(88, 14, MW, MH, 4)
     fill(88, 0, MW, 14, 9)
     fill(MW - 4, 14, MW, MH, 9)
     fill(88, MH - 2, MW, MH, 9)
-    fill(89, 14, 91, MH - 2, 10)
-    fill(99, 14, 100, MH - 2, 10)
-    for row in MORRO_ROWS:
-        fill(89, row, 108, row + 1, 10)
+    # Rocinha (1970): barracos por todo o morro, becos estreitos em terracos e escadarias entre eles
+    fill(ROC_X0, ROC_ROWS[0] - 4, ROC_X1, ROC_ROWS[-1] + 5, 16)
+    for row in ROC_ROWS:
+        fill(ROC_X0, row, ROC_X1, row + 1, 15)
+    for seg in ROC_SEGS:
+        for sx, sy0, sy1, sw, st in seg:
+            fill(sx, sy0, sx + sw, sy1, st)
+    fill(ROC_LARGO[0], ROC_LARGO[1], ROC_LARGO[2], ROC_LARGO[3], 5)
     return tiles
 
 
-MORRO_ROWS = tuple(range(20, 85, 6))
+MORRO_ROWS = ROC_ROWS
 LAGOA_C = (74, 68)
 FEIRA_X = (41, 45, 54, 58, 62, 66)
 BEACH_KIOSK_ROWS = (18, 31, 53, 66, 78)
@@ -2507,7 +2708,8 @@ def build_minimap(tiles):
     cols = {0: (70, 62, 90), 1: (226, 204, 186), 2: (112, 176, 110),
             3: (196, 140, 134), 4: (62, 126, 100), 5: (214, 186, 170),
             6: (40, 100, 160), 7: (238, 212, 168), 8: (230, 224, 226), 9: (50, 98, 80),
-            10: (190, 176, 178), 11: (84, 160, 196), 12: (110, 172, 98), 13: (230, 170, 70), 14: (70, 62, 90)}
+            10: (190, 176, 178), 11: (84, 160, 196), 12: (110, 172, 98), 13: (230, 170, 70), 14: (70, 62, 90),
+            15: (176, 150, 128), 16: (160, 108, 92)}
     for y in range(MH):
         for x in range(MW):
             m.fill(cols[tiles[y][x]], (x * 2, y * 2, 2, 2))
@@ -3215,7 +3417,7 @@ NPC_ROUTES = {
     "zeca": dict(speed=16, stops=[(16, 40, 14, 26), (22, 45, 10, 18), (54, 43, 8, 14), (18, 55, 10, 18), (17, 27, 10, 18)]),
     "lucia": dict(speed=15, stops=[(66, 16, 12, 20), (43, 17, 10, 16), (56, 36, 8, 14), (64, 68, 10, 18), (77, 40, 8, 12)]),
     "dom": dict(speed=12, stops=[(51, 16, 14, 24), (60, 35, 10, 16), (77, 40, 10, 18), (46, 17, 8, 14)]),
-    "nelson": dict(speed=14, stops=[(50, 62, 12, 20), (95, 33, 12, 20), (47, 61, 8, 14), (62, 45, 10, 16), (50, 68, 8, 14)]),
+    "nelson": dict(speed=14, stops=[(50, 62, 12, 20), (95, 35, 12, 20), (47, 61, 8, 14), (62, 45, 10, 16), (50, 68, 8, 14)]),
     "osmar": dict(speed=12, stops=[(52, 32, 10, 18), (60, 41, 8, 14), (70, 18, 10, 16), (44, 23, 8, 14)]),
     "brandao": dict(speed=14, stops=[(55, 34, 10, 16), (36, 30, 8, 12), (70, 18, 8, 14), (77, 45, 8, 12)]),
     "tiao": dict(speed=26, stops=[(53, 39, 4, 8), (50, 67, 6, 12), (66, 66, 4, 8), (60, 18, 4, 8), (22, 33, 4, 8)]),
@@ -3401,14 +3603,14 @@ def chest_sprite(open_=False):
 
 # favelas novas (x, y da base em tiles): comunidade ao sul do campinho
 FAVELA_NOVA = [(38.8, 64.6), (41.8, 65.0), (38.8, 68.6), (38.8, 72.6), (41.8, 73.0)]
-PIXACOES = [(42.3, 68.6, True), (95.5, 85.5, True), (103.0, 86.5, False), (47.0, 61.6, False)]   # (x, y, duas linhas?)
-VARAIS = [(40.3, 66.8), (98.0, 29.5), (98.0, 47.5), (98.0, 65.5)]
+PIXACOES = [(42.3, 68.6, True), (94.5, 85.0, True), (103.0, 85.0, False), (47.0, 61.6, False)]   # (x, y, duas linhas?)
+VARAIS = [(40.3, 66.8), (98.0, 30.9), (98.0, 45.9), (98.0, 65.9), (93.0, 55.9), (103.0, 75.9), (95.0, 40.9), (101.0, 60.9)]
 POSTER_SPOTS = [(86, 14), (86, 27), (86, 41), (86, 53), (83, 34), (46, 60), (60, 60), (73, 60),
                 (36, 12), (36, 48), (36, 66)]
 
 # SEGREDOS: difíceis de achar; exigem puzzles, enigmas ou uma ação específica
 SECRET_CODE = (3, 1, 0, 3)           # 31/03: o dia do golpe de 1964 (DDMM)
-SECRET_POSTERS = [((98, 32), 0), ((22, 33), 1), ((64, 68), 2), ((77, 40), 3)]   # (tile, posição do dígito)
+SECRET_POSTERS = [((100, 30), 0), ((22, 33), 1), ((64, 68), 2), ((77, 40), 3)]   # (tile, posição do dígito)
 ESCUTA_T = 6.0                       # segundos parado, segurando E, sem policial por perto
 SECRETS = {
     "bau": dict(tile=(107, 80), item="diario", fx=dict(evid=8, cash=60),
@@ -5970,14 +6172,28 @@ class Game(RoomsMixin):
             if 0 < y < MH * TS - 4:
                 add(Obj(palms[a % 3], x, y, col=pygame.Rect(x - 3, y - 4, 6, 4)))
 
-        # ---- morro: casas da favela em terraços ao longo dos becos
-        for row in MORRO_ROWS:
-            for i, hx in enumerate((93, 96.5, 102, 105.5)):
-                if r.random() < 0.12:
-                    continue
-                x, y = int(hx * TS + r.randint(-3, 3)), row * TS
-                put(outlined(barraco_sprite(row * 10 + i)), x, y, 30, 6, shadow=(0.3, 0.4, 60))
-                big_occ.append(pygame.Rect(x - 20, y - 50, 40, 54))
+        # ---- Rocinha (1970): barracos de madeira e zinco encostados uns nos outros, de frente para os becos
+        roc_spr = [outlined(barraco70_sprite(i)) for i in range(20)]
+        for k, row in enumerate(ROC_ROWS):
+            if row == ROC_ROWS[-1]:
+                continue                                  # o beco de baixo e so muro pichado
+            blk = []                                      # trechos sem casa: escadas que chegam do norte, largo, bau
+            if k > 0:
+                for sx, sy0, sy1, sw, st in ROC_SEGS[k - 1]:
+                    blk.append((sx - 1.75, sx + sw + 1.75))
+            if row == 50:
+                blk.append((0, 94.4))
+            if row == 80:
+                blk.append((105.2, 200))
+            rr = random.Random(1970 + row)
+            cx = 89.4
+            while cx <= 106.8:
+                if not any(a <= cx <= b for a, b in blk):
+                    put(roc_spr[rr.randrange(len(roc_spr))], int(cx * TS), row * TS, 30, 6, shadow=(0.3, 0.4, 60))
+                cx += 2.2 + rr.uniform(-0.05, 0.2)
+        put(outlined(venda_sprite()), int(89.6 * TS), int(49.6 * TS), 40, 6, shadow=(0.3, 0.4, 60))
+        put(outlined(bica_sprite()), int(91.7 * TS), int(48.2 * TS), 20, 6, shadow=(0.3, 0.4, 60))
+        put(outlined(placa_sprite()), int(87.5 * TS), int(52.2 * TS), 10, 4, shadow=(0.2, 0.3, 60))
 
         # ---- favelas novas, pixação "FORA DITADURA", varais e pôsteres de revolução
         barr = [outlined(barraco_sprite(900 + i)) for i in range(8)]
@@ -6088,11 +6304,7 @@ class Game(RoomsMixin):
             Walker(Wd[11], [(850, 1150), (730, 1150), (730, 1030), (850, 1030)], 26, 1),
             Walker(Wd[10], lagoa_ring, 10, 0),
             Walker(Wd[8], lagoa_ring[::-1], 10, 6),
-            Walker(Wd[1], [(1440, 260), (1440, 1150)], 12, 0),
-            Walker(Wd[5], [(1592, 260), (1592, 1150)], 11, 0),
-            Walker(Wd[9], [(1440, 520), (1700, 520)], 10, 0),
-            Walker(Wd[7], [(1700, 904), (1440, 904)], 9, 0),
-        ]
+        ] + [Walker(Wd[(3 * i + 1) % len(Wd)], lp, 11 + i % 3 * 2, i) for i, lp in enumerate(ROC_LOOPS)]
         # partículas: pétalas e papéis levados pelo vento
         self.motes = [[r.random() * IW, r.random() * IH, r.uniform(3, 9), r.uniform(0, 6.28), r.randrange(3)]
                       for _ in range(46)]
